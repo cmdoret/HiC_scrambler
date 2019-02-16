@@ -1,0 +1,12 @@
+  hicstuff v0.2.18 log file
+  date: sam. févr. 16 11:46:34 CET 2019
+  enzyme: 5000
+  input1: aligned_for.fq.gz
+  input2: aligned_rev.fq.gz
+  ref: genome.fa
+  ---
+8113105 read pairs in fastq files.
+53.02% single end reads uniquely mapped with MQ > 30 (8602763/16226210)
+Genome digested into 307 fragments with a median length of 5000.0
+2418290 pairs used to build the contact map
+Contact map generated after 0:2:9 (H:M:S).
