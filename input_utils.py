@@ -5,6 +5,13 @@ import numba as nb
 import numpy as np
 from Bio import SeqIO
 
+def load_chromsizes(path):
+    """Loads hicstuff info_contig file into a dictionary"""
+    chr_names = np.loadtxt(path, usecols=(0,), skiprows=1, dtype=str, ndmin=1)
+    chr_len = np.loadtxt(path, usecols=(1,), skiprows=1, dtype=np.int64, ndmin=1)
+    chromsizes = {n: l for n, l in zip(chr_names, chr_len)}
+    return chromsizes
+
 
 @nb.njit(error_model='numpy', parallel=True)
 def subset_mat(matrix, coords, labels, winsize=128):
@@ -13,8 +20,8 @@ def subset_mat(matrix, coords, labels, winsize=128):
     input coordinates. Windows and their associated labels are returned.
     Parameters
     ----------
-    matrix : numpy.ndarray of floats
-        The Hi-C matrix as a 2D array.
+    matrix : scipy.sparse.coo_matrix
+        The Hi-C matrix as a 2D array in sparse format.
     coords : numpy.ndarray of ints
         Pairs of coordinates for which subsets should be generated. A window
         centered around each of these coordinates will be sampled. Dimensions
@@ -73,8 +80,6 @@ def edit_genome(fasta_in, fasta_out, sv_dict):
         Dictionary with names of structural variants as keys and tuples
         of chromosome names and coordinates as values. Currently, the only
         structural variants supported are inversions.
-    Returns
-    -------
     """
     with open(fasta_out, 'w') as fa_out:
         for chrom in SeqIO.parse(fasta_in, format='fasta'):
@@ -84,7 +89,7 @@ def edit_genome(fasta_in, fasta_out, sv_dict):
                         start, end = sv[1]
                         if sv[0] == chrom.id:
                             chrom.seq[start: end] = chrom.seq[end:start]
-        SeqIO.write(chrom, fa_out)
+        SeqIO.write(chrom, fa_out, format='fasta')
 
 
 def generate_sv(
@@ -116,15 +121,16 @@ def generate_sv(
     """
     # Relative abundance of each event type (placeholder values)
     rel_abun = {"INV": 8, "DEL": 400, "DUP": 60, "INS": 160, "CNV": 350}
-    for chrom, size in chromsizes:
+    print(chromsizes)
+    for chrom, size in chromsizes.items():
         n_sv = size * sum(sv_freqs.values()) / 1000
-        out_sv = [None * n_sv]
+        out_sv = [None] * int(n_sv)
         sv_count = 0
         for sv_type in sv_freqs:
             prop_event = rel_abun[sv_type] / \
-                sum([n for s, n in rel_abun if s in sv_freqs])
-            n_event = n_sv * prop_event
-            for _ in n_event:
+                sum([n for s, n in rel_abun.items() if s in sv_freqs.keys()])
+            n_event = int(n_sv * prop_event)
+            for _ in range(n_event):
                 start = np.random.randint(size)
                 end = start + np.random.normal(loc=params[sv_type],
                                                scale=0.1 * params[sv_type])

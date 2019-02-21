@@ -1,24 +1,28 @@
-# Script used to coordinate all steps to generate input for the model
+# Script used to generate input for the model
 # Datasets generated consist of an NxWxW array of features and an N array
 # of labels
 import input_utils as iu
 import os
-from hicstuff import pipeline
+from hicstuff.commands import Pipeline
+import hicstuff.io as hio
+import numpy as np
 
 TMP_DIR = "data/tmp"
 ORIG_GENOME = "data/genome.fa"
 ORIG_CHROMSIZE = "data/input/original.chr.tsv"
 OUT_DIR = "data/input/training/"
 N_RUNS = 1
-### Make edited genomes
+chromsizes = iu.load_chromsizes(ORIG_CHROMSIZE)
+# Make edited genomes
 for i in range(N_RUNS):
-    RUN_DIR = OUT_DIR.rstrip("/") + "_" + i
-    os.makedir(RUN_DIR)
+    RUN_DIR = OUT_DIR.rstrip("/") + "_" + str(i)
+    os.makedirs(RUN_DIR, exist_ok=True)
     # Generate random structural variations and apply them to the genome
-    struct_vars = iu.generate_sv(ORIG_CHROMSIZE)
-    iu.edit_genome(ORIG_GENOME, os.path.join(RUN_DIR, "mod_genome.fa", sv))
+    struct_vars = iu.generate_sv(chromsizes)
+    mod_genome = os.path.join(RUN_DIR, "mod_genome.fa")
+    iu.edit_genome(ORIG_GENOME, mod_genome, struct_vars)
     # Generate contact map using the edited genome
-    pl = pipeline(
+    pl = Pipeline(
         [
             "-F",
             "-e",
@@ -29,15 +33,20 @@ for i in range(N_RUNS):
             "-o",
             RUN_DIR,
             "-f",
-            ORIG_GENOME,
-            "data/reads_for.fastq",
-            "data/reads_rev.fastq",
+            mod_genome,
+            "data/aligned_for.fq",
+            "data/aligned_rev.fq",
             "-P",
-            RUN,
+            "RUN_" + str(i),
             "-T",
             TMP_DIR,
-        ]
+        ],
+        {}
     )
     pl.execute()
-
+    mat_path = os.path.join(RUN_DIR, "RUN_" + str(i) + ".mat.tsv")
+    run_mat = hio.load_sparse_matrix(mat_path)
+    labels 
     X, Y = iu.subset_mat(run_mat, struct_vars, labels)
+    np.savetxt(X, os.path.join(OUT_DIR, "RUN_" + str(i) + ".x"))
+    np.savetxt(Y, os.path.join(OUT_DIR, "RUN_" + str(i) + ".y"))
