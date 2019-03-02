@@ -43,12 +43,13 @@ def subset_mat(matrix, coords, labels, winsize=128):
     i_w = (h - winsize / 2)
     j_w = (w - winsize / 2)
 
-    # Only keep coords far enough from borders
+    # Only keep coords far enough from borders of the matrix
     valid_coords = np.where((coords[:, 0] > winsize / 2) &
                             (coords[:, 1] > winsize / 2) &
                             (coords[:, 0] < i_w) &
                             (coords[:, 1] < j_w))[0]
     coords = coords[valid_coords, :]
+    labels = labels[valid_coords, :]
     # Number of windows to generate
     n_windows = coords.shape[0]
     x = np.zeros((n_windows, winsize, winsize), dtype=np.float64)
