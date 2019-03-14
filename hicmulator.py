@@ -1,3 +1,4 @@
+# Utilities to generate an artificial Hi-C matrix
 import numpy as np
 
 
@@ -25,7 +26,7 @@ def add_bias(M, slope, medianIF, powerlaw_alpha, biasFun=normal_bias):
         col_num = col_num + 1
     return(mat)
 
-
+#WIP: Translate R code to python and modify
 # simulate synthetic Hi-C contact maps.
 # IF : interaction frequency
 def sim_mat(nrow=100, ncol=100, medianIF, sdIF, powerlaw_alpha,
