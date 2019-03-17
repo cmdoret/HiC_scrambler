@@ -1,4 +1,4 @@
-# Script used to generate input for the model
+# Script used to generate training data for the model
 # Datasets generated consist of an NxWxW array of features and an N array
 # of labels
 import input_utils as iu
@@ -14,21 +14,21 @@ import pathlib
 BINSIZE = 2000
 TMP_DIR = "data/tmp"
 ORIG_GENOME = "data/genome.fa"
-ORIG_CHROMSIZE = "data/input/original.chr.tsv"
+CONFIG_PATH = "template.json"
 OUT_DIR = "data/input/training/"
 N_RUNS = 1
 
 pathlib.Path(OUT_DIR).mkdir(parents=True, exist_ok=True)
 
-chromsizes = iu.load_chromsizes(ORIG_CHROMSIZE)
+mixer = iu.GenomeMixer(ORIG_GENOME, CONFIG_PATH, "Debug")
 # Make edited genomes
 for i in range(N_RUNS):
     RUN_DIR = OUT_DIR.rstrip("/") + "_" + str(i)
     os.makedirs(RUN_DIR, exist_ok=True)
     # Generate random structural variations and apply them to the genome
-    struct_vars = iu.generate_sv(chromsizes, freq=10e-7)
+    mixer.generate_sv()
     mod_genome = join(RUN_DIR, "mod_genome.fa")
-    iu.edit_genome(ORIG_GENOME, mod_genome, struct_vars)
+    mixer.edit_genome(mod_genome)
     # Generate contact map using the edited genome
     pl = Pipeline(
         [
@@ -41,8 +41,8 @@ for i in range(N_RUNS):
             RUN_DIR,
             "-f",
             mod_genome,
-            "data/aligned_for.fq",
-            "data/aligned_rev.fq",
+            "data/for.fq",
+            "data/rev.fq",
             "-P",
             "RUN_" + str(i),
             "-T",
@@ -54,7 +54,8 @@ for i in range(N_RUNS):
     mat_path = join(RUN_DIR, "RUN_" + str(i) + ".mat.tsv")
     frags = pd.read_csv(join(RUN_DIR, "RUN_" + str(i) + ".frag.tsv"), delimiter="\t")
     run_mat = hio.load_sparse_matrix(mat_path)
-    coords, labels = iu.pos_to_coord(struct_vars, frags, BINSIZE)
-    X, Y = iu.subset_mat(run_mat, coords.astype(int), labels)
+    slicer = iu.MatrixSlicer(run_mat)
+    slicer.pos_to_coord(mixer.sv, frags, BINSIZE)
+    X, Y = slicer.subset_mat(win_size=128, prop_negative=0.5)
     np.save(join(OUT_DIR, "RUN_" + str(i) + ".x.npy"), X)
     np.save(join(OUT_DIR, "RUN_" + str(i) + ".y.npy"), Y)

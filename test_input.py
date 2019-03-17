@@ -19,7 +19,10 @@ def test_subset_mat(matrix_size, window_size):
     # Pick an arbitrary number of random coordinates in the matrix
     coords = np.random.randint(0, matrix_size, (np.random.randint(matrix_size // 2), 2))
     labels = np.random.randint(0, 2, coords.shape[0])
-    x, y = iu.subset_mat(mat, coords, labels, window_size)
+    s = iu.MatrixSlicer(mat, 10)
+    s.coords = coords
+    s.labels = labels
+    x, y = s.subset_mat(win_size=window_size)
 
     # Only keep coords far enough from borders of the matrix
     valid = np.where(

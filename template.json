@@ -4,7 +4,7 @@
         "SV_types": {
             "INV": {
                 "prop": 1,
-                "mean_size": 500000,
+                "mean_size": 100000,
                 "sd_size": 10000,
                 "code": 1
             }

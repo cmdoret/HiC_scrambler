@@ -116,6 +116,7 @@ class GenomeMixer(object):
                 # multiply proportion of SV type by total SV freq desired to
                 # get number of events of this type.
                 n_event = int(n_sv * sv_char["prop"])
+                print("Generating {0} {1}".format(n_event, sv_name))
                 for _ in range(n_event):
                     # Start position is random and length is picked from a normal
                     # distribution centered around mean length.
@@ -127,7 +128,7 @@ class GenomeMixer(object):
                     end = min(size, end)
                     out_sv.iloc[sv_count, :] = (sv_name, chrom, start, end)
                     sv_count += 1
-
+        out_sv.start, out_sv.end = out_sv.start.astype(int), out_sv.end.astype(int)
         self.sv = out_sv
 
     def edit_genome(self, fasta_out):
@@ -149,34 +150,63 @@ class GenomeMixer(object):
                     chr, start, end = row.chrom, int(row.start), int(row.end)
                     # NOTE: Only implemented for inversions for now.
                     if sv_type == "INV":
+                        # Reverse complement to generate inversion
                         if chr == chrom.id:
-                            mutseq[start:end] = mutseq[end - 1 : start - 1 : -1]
+                            mutseq[start:end] = Seq.reverse_complement(
+                                mutseq[start:end]
+                            )
                 chrom = SeqIO.SeqRecord(seq=mutseq, id=chrom.id, description="")
                 SeqIO.write(chrom, fa_out, format="fasta")
 
 
 class MatrixSlicer(object):
     """
-    Allows loading and slicing `hicstuff` Hi-C matrices to feed windows into a
-    keras model.
+    Allows loading and slicing `hicstuff` Hi-C matrices into windows that can
+    be feed into a keras model.
+
+    Examples
+    --------
+    ms = MatrixSlicer(M)
+    ms.pos_to_coord(sv, frags)
+    X, Y = ms.subset_mat(pos, labels)
+
+    Attributes
+    ----------
+    mat : scipy.sparse.coo_matrix
+        The matrix to be sliced.
+    win_size : int
+        The dimension of the slices.
+    bin_size : int
+        The size of Hi-C bins, in base pairs.
+    coords : numpy.ndarray of ints
+        Pairs of coordinates for which subsets should be generated. A window
+        centered around each of these coordinates will be sampled. Dimensions
+        are [N, 2].
+    labels : numpy.ndarray of ints
+        1D array of labels corresponding to the coords given.
+    X : numpy.array
+        Matrix slices, array of N x win_size x win_size.
+    Y : numpy.array
+        Labels (class) representing the different SV types.
     """
 
-    def subset_mat(self, matrix, coords, labels, winsize=128, prop_negative=0.5):
+    def __init__(self, mat):
+        self.mat = mat
+        self.win_size = 128
+        self.bin_size = None
+        self.coords = None
+        self.labels = None
+        self.X = None
+        self.Y = None
+
+    def subset_mat(self, win_size, prop_negative=0.5):
         """
         Samples evenly sized windows from a matrix. Windows are centered around
         input coordinates. Windows and their associated labels are returned.
 
         Parameters
         ----------
-        matrix : scipy.sparse.coo_matrix
-            The Hi-C matrix as a 2D array in sparse format.
-        coords : numpy.ndarray of ints
-            Pairs of coordinates for which subsets should be generated. A window
-            centered around each of these coordinates will be sampled. Dimensions
-            are [N, 2].
-        labels : numpy.ndarray of ints
-            1D array of labels corresponding to the coords given.
-        winsize : int
+        win_size : int
             Size of windows to sample from the matrix.
         prop_negative : float
             The proportion of windows without SVs desired. If set to 0.5, when given
@@ -187,19 +217,21 @@ class MatrixSlicer(object):
         -------
         x : numpy.ndarray of floats
             The 3D feature vector to use as input in a keras model.
-            Dimensions are [N, winsize, winsize].
+            Dimensions are [N, win_size, win_size].
         y : numpy.array of ints
             The 1D label vector of N values to use as prediction in a keras model.
         """
-
-        h, w = matrix.shape
-        i_w = int(h - winsize // 2)
-        j_w = int(w - winsize // 2)
+        self.win_size = win_size
+        h, w = self.mat.shape
+        i_w = int(h - win_size // 2)
+        j_w = int(w - win_size // 2)
+        coords = self.coords
+        labels = self.labels
         sv_to_int = {"INV": 1, "DEL": 2, "INS": 3}
         # Only keep coords far enough from borders of the matrix
         valid_coords = np.where(
-            (coords[:, 0] > int(winsize / 2))
-            & (coords[:, 1] > int(winsize / 2))
+            (coords[:, 0] > int(win_size / 2))
+            & (coords[:, 1] > int(win_size / 2))
             & (coords[:, 0] < i_w)
             & (coords[:, 1] < j_w)
         )[0]
@@ -207,12 +239,12 @@ class MatrixSlicer(object):
         labels = labels[valid_coords]
         # Number of windows to generate (including negative windows)
         n_windows = int(coords.shape[0] // (1 - prop_negative))
-        x = np.zeros((n_windows, winsize, winsize), dtype=np.float64)
+        x = np.zeros((n_windows, win_size, win_size), dtype=np.float64)
         y = np.zeros(n_windows, dtype=np.int64)
-        if winsize >= min(h, w):
+        if win_size >= min(h, w):
             print("Window size must be smaller than the Hi-C matrix.")
-        matrix = matrix.tocsr()
-        halfw = winsize // 2
+        matrix = self.mat.tocsr()
+        halfw = win_size // 2
         # Getting SV windows
         for i in range(coords.shape[0]):
             c = coords[i, :]
@@ -225,20 +257,21 @@ class MatrixSlicer(object):
         neg_coords = set()
         for i in range(coords.shape[0], n_windows):
             tries = 0
-            c = np.random.randint(winsize // 2, i_w)
+            c = np.random.randint(win_size // 2, i_w)
             # this coordinate must not exist already
             while (c in coords[:, 0]) or (c in neg_coords):
                 print("{} is already used. Trying another position...".format(c))
                 # If unable to find new coords, just return output until here
                 if tries > 100:
                     return x[:i, :, :], y[:i]
-                c = np.random.randint(winsize // 2, i_w)
+                c = np.random.randint(win_size // 2, i_w)
                 neg_coords.add(c)
                 tries += 1
             win = matrix[(c - halfw) : (c + halfw), (c - halfw) : (c + halfw)]
             x[i, :, :] = hcv.sparse_to_dense(win, remove_diag=False)
             y[i] = 0
-        return x, y
+            self.X, self.Y = x.astype(int), y
+        return self.X, self.Y
 
     def pos_to_coord(self, sv_df, frags_df, bin_size):
         """
@@ -283,4 +316,4 @@ class MatrixSlicer(object):
         breakpoints = np.vstack([sv_frags.coord, sv_frags.coord]).T
         breakpoints.astype(int)
         labels = np.array(sv_frags.sv_type.tolist())
-        return breakpoints, labels
+        self.coords, self.labels = breakpoints, labels
