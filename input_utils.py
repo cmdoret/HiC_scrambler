@@ -264,8 +264,8 @@ class MatrixSlicer(object):
                 # If unable to find new coords, just return output until here
                 if tries > 100:
                     return x[:i, :, :], y[:i]
-                c = np.random.randint(win_size // 2, i_w)
                 neg_coords.add(c)
+                c = np.random.randint(win_size // 2, i_w)
                 tries += 1
             win = matrix[(c - halfw) : (c + halfw), (c - halfw) : (c + halfw)]
             x[i, :, :] = hcv.sparse_to_dense(win, remove_diag=False)

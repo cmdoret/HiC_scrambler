@@ -1,6 +1,6 @@
 {
     "Debug": {
-        "SV_freq": 0.000001,
+        "SV_freq": 0.00001,
         "SV_types": {
             "INV": {
                 "prop": 1,
