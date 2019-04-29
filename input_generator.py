@@ -16,7 +16,7 @@ TMP_DIR = "data/tmp"
 ORIG_GENOME = "data/genome.fa"
 CONFIG_PATH = "template.json"
 OUT_DIR = "data/input/training/"
-N_RUNS = 1
+N_RUNS = 5
 
 pathlib.Path(OUT_DIR).mkdir(parents=True, exist_ok=True)
 
@@ -52,7 +52,7 @@ for i in range(N_RUNS):
     )
     pl.execute()
     mat_path = join(RUN_DIR, "RUN_" + str(i) + ".mat.tsv")
-    frags = pd.read_csv(join(RUN_DIR, "RUN_" + str(i) + ".frag.tsv"), delimiter="\t")
+    frags = pd.read_csv(join(RUN_DIR, "RUN_" + str(i) + ".frags.tsv"), delimiter="\t")
     run_mat = hio.load_sparse_matrix(mat_path)
     slicer = iu.MatrixSlicer(run_mat)
     slicer.pos_to_coord(mixer.sv, frags, BINSIZE)
