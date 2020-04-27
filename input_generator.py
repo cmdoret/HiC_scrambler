@@ -7,6 +7,7 @@ from os.path import join
 from hicstuff.commands import Pipeline
 import hicstuff.io as hio
 import numpy as np
+import shutil as su
 import pandas as pd
 import pathlib
 
@@ -15,7 +16,8 @@ BINSIZE = 2000
 TMP_DIR = "data/tmp"
 ORIG_GENOME = "data/genome.fa"
 CONFIG_PATH = "template.json"
-OUT_DIR = "data/input/training/"
+PROFILE = "Debug"
+OUT_DIR = join("data/input/training/", PROFILE)
 N_RUNS = 5
 
 pathlib.Path(OUT_DIR).mkdir(parents=True, exist_ok=True)
@@ -36,10 +38,11 @@ for i in range(N_RUNS):
             str(BINSIZE),
             "-t",
             "12",
-            "-m",
+            "-a",
+            "minimap2",
             "-o",
             RUN_DIR,
-            "-f",
+            "-g",
             mod_genome,
             "data/for.fq",
             "data/rev.fq",
@@ -52,10 +55,12 @@ for i in range(N_RUNS):
     )
     pl.execute()
     mat_path = join(RUN_DIR, "RUN_" + str(i) + ".mat.tsv")
-    frags = pd.read_csv(join(RUN_DIR, "RUN_" + str(i) + ".frags.tsv"), delimiter="\t")
+    frag_path = join(RUN_DIR, "RUN_" + str(i) + ".frags.tsv")
+    frags = pd.read_csv(frag_path, delimiter="\t")
     run_mat = hio.load_sparse_matrix(mat_path)
     slicer = iu.MatrixSlicer(run_mat)
     slicer.pos_to_coord(mixer.sv, frags, BINSIZE)
     X, Y = slicer.subset_mat(win_size=128, prop_negative=0.5)
     np.save(join(OUT_DIR, "RUN_" + str(i) + ".x.npy"), X)
     np.save(join(OUT_DIR, "RUN_" + str(i) + ".y.npy"), Y)
+    su.rmtree(RUN_DIR)

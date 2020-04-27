@@ -85,28 +85,28 @@ if __name__ == "__main__":
         kfold_loss[i], kfold_acc[i] = train_and_evaluate_model(
             model, x_data[train], y_data[train], x_data[test], y_data[test]
         )
-# Loss and accuracy of each fold
+    # Loss and accuracy of each fold
 
-plt.bar(range(len(kfold_loss)), height=kfold_loss)
-plt.show()
-plt.bar(range(len(kfold_acc)), height=kfold_acc)
-plt.show()
+    plt.bar(range(len(kfold_loss)), height=kfold_loss)
+    plt.show()
+    plt.bar(range(len(kfold_acc)), height=kfold_acc)
+    plt.show()
 
-# On all data at once
-history = model.fit(x_data, y_data, epochs=15)
-# Plot training & validation accuracy values
-plt.plot(history.history["acc"])
-plt.title("Model accuracy")
-plt.ylabel("Accuracy")
-plt.xlabel("Epoch")
-plt.legend(["Train", "Test"], loc="upper left")
-plt.show()
+    # On all data at once
+    history = model.fit(x_data, y_data, epochs=15)
+    # Plot training & validation accuracy values
+    plt.plot(history.history["acc"])
+    plt.title("Model accuracy")
+    plt.ylabel("Accuracy")
+    plt.xlabel("Epoch")
+    plt.legend(["Train", "Test"], loc="upper left")
+    plt.show()
 
-# Plot training & validation loss values
-plt.plot(history.history["loss"])
-plt.title("Model loss")
-plt.ylabel("Loss")
-plt.xlabel("Epoch")
-plt.legend(["Train", "Test"], loc="upper left")
-plt.show()
+    # Plot training & validation loss values
+    plt.plot(history.history["loss"])
+    plt.title("Model loss")
+    plt.ylabel("Loss")
+    plt.xlabel("Epoch")
+    plt.legend(["Train", "Test"], loc="upper left")
+    plt.show()
 
