@@ -1,8 +1,11 @@
-# Utilities to generate training data for the SV detecting NN.
-# cmdoret, 20190131
+"""
+Utilities to generate training data for the SV detecting NN.
+cmdoret, 20190131
+"""
 
 import numpy as np
 import pandas as pd
+import cooler
 from Bio import SeqIO, Seq
 from hicstuff import view as hcv
 import json
@@ -128,7 +131,10 @@ class GenomeMixer(object):
                     end = min(size, end)
                     out_sv.iloc[sv_count, :] = (sv_name, chrom, start, end)
                     sv_count += 1
-        out_sv.start, out_sv.end = out_sv.start.astype(int), out_sv.end.astype(int)
+        out_sv.start, out_sv.end = (
+            out_sv.start.astype(int),
+            out_sv.end.astype(int),
+        )
         self.sv = out_sv
 
     def edit_genome(self, fasta_out):
@@ -155,20 +161,22 @@ class GenomeMixer(object):
                             mutseq[start:end] = Seq.reverse_complement(
                                 mutseq[start:end]
                             )
-                chrom = SeqIO.SeqRecord(seq=mutseq, id=chrom.id, description="")
+                chrom = SeqIO.SeqRecord(
+                    seq=mutseq, id=chrom.id, description=""
+                )
                 SeqIO.write(chrom, fa_out, format="fasta")
 
 
 class MatrixSlicer(object):
     """
-    Allows loading and slicing `hicstuff` Hi-C matrices into windows that can
-    be feed into a keras model.
+    Allows loading and slicing of Hi-C matrices (cool format) into windows that
+    can be easily feed into a keras model. Given a control cool file, a scrambled
+    cool file and a list of SVs. This will generate 
 
     Examples
     --------
-    ms = MatrixSlicer(M)
-    ms.pos_to_coord(sv, frags)
-    X, Y = ms.subset_mat(pos, labels)
+    ms = MatrixSlicer(cool_path, sv_df)
+    X, Y = ms.subset_mat()
 
     Attributes
     ----------
@@ -190,14 +198,15 @@ class MatrixSlicer(object):
         Labels (class) representing the different SV types.
     """
 
-    def __init__(self, mat):
-        self.mat = mat
-        self.win_size = 128
-        self.bin_size = None
+    def __init__(self, cool_path, sv_df, win_size=128):
+        self.cool = cooler.Cooler(cool_path)
+        self.sv = sv_df
+        self.win_size = win_size
         self.coords = None
         self.labels = None
         self.X = None
         self.Y = None
+        self.pos_to_coord()
 
     def subset_mat(self, win_size, prop_negative=0.5):
         """
@@ -249,7 +258,8 @@ class MatrixSlicer(object):
         for i in range(coords.shape[0]):
             c = coords[i, :]
             win = matrix[
-                (c[0] - halfw) : (c[0] + halfw), (c[1] - halfw) : (c[1] + halfw)
+                (c[0] - halfw) : (c[0] + halfw),
+                (c[1] - halfw) : (c[1] + halfw),
             ]
             x[i, :, :] = hcv.sparse_to_dense(win, remove_diag=False)
             y[i] = sv_to_int[labels[i]]
@@ -260,7 +270,9 @@ class MatrixSlicer(object):
             c = np.random.randint(win_size // 2, i_w)
             # this coordinate must not exist already
             while (c in coords[:, 0]) or (c in neg_coords):
-                print("{} is already used. Trying another position...".format(c))
+                print(
+                    "{} is already used. Trying another position...".format(c)
+                )
                 # If unable to find new coords, just return output until here
                 if tries > 100:
                     return x[:i, :, :], y[:i]
@@ -273,7 +285,7 @@ class MatrixSlicer(object):
             self.X, self.Y = x.astype(int), y
         return self.X, self.Y
 
-    def pos_to_coord(self, sv_df, frags_df, bin_size):
+    def pos_to_coord(self):
         """
         Converts start - end genomic positions from structural variations to breakpoints
         in matrix coordinates.
@@ -297,18 +309,18 @@ class MatrixSlicer(object):
             An N X 1 array of labels corresponding to SV type.
         """
         # Get coordinates to match binning
-        sv_df.start = (sv_df.start // bin_size) * bin_size
-        sv_df.end = (sv_df.end // bin_size) * bin_size
+        res = self.cool.binsize
+        self.sv.start = (self.sv.start // res) * res
+        self.sv.end = (self.sv.end // res) * res
         # Put start and end in the same column, 1 row / breakpoint
-        s_df = sv_df.loc[:, ["sv_type", "chrom", "start"]]
+        s_df = self.sv.loc[:, ["sv_type", "chrom", "start"]]
         s_df.rename(index=str, columns={"start": "pos"}, inplace=True)
-        e_df = sv_df.loc[:, ["sv_type", "chrom", "end"]]
+        e_df = self.sv.loc[:, ["sv_type", "chrom", "end"]]
         e_df.rename(index=str, columns={"end": "pos"}, inplace=True)
-        sv_df = pd.concat([s_df, e_df]).reset_index(drop=True)
+        self.sv = pd.concat([s_df, e_df]).reset_index(drop=True)
         # Assign matrix coordinate (fragment index) to each breakpoint
-        frags_df["coord"] = frags_df.index
-        sv_frags = sv_df.merge(
-            frags_df,
+        sv_frags = self.sv.merge(
+            self.cool.bins()[:],
             left_on=["chrom", "pos"],
             right_on=["chrom", "start_pos"],
             how="left",
