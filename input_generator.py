@@ -7,6 +7,7 @@ from os.path import join
 import hicstuff.pipeline as hpi
 import hicstuff.io as hio
 import numpy as np
+import shutil as su
 import pandas as pd
 import pathlib
 import click
