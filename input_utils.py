@@ -167,165 +167,130 @@ class GenomeMixer(object):
                 SeqIO.write(chrom, fa_out, format="fasta")
 
 
-class MatrixSlicer(object):
+def pos_to_coord(clr, sv_df):
     """
-    Allows loading and slicing of Hi-C matrices (cool format) into windows that
-    can be easily feed into a keras model. Given a control cool file, a scrambled
-    cool file and a list of SVs. This will generate 
+    Converts start - end genomic positions from structural variations to breakpoints
+    in matrix coordinates.
 
-    Examples
-    --------
-    ms = MatrixSlicer(cool_path, sv_df)
-    X, Y = ms.subset_mat()
-
-    Attributes
+    Parameters
     ----------
-    mat : scipy.sparse.coo_matrix
-        The matrix to be sliced.
-    win_size : int
-        The dimension of the slices.
-    bin_size : int
-        The size of Hi-C bins, in base pairs.
+    clr : cooler.Cooler
+        The cooler object containing Hi-C data
+    sv_df : pandas.DataFrame
+        A dataframe containg the type and genomic start-end coordinates of
+        strucural variations as given by generate_sv().
+
+    Returns
+    -------
+    breakpoints : numpy.array of int
+        A N x 2 numpy array of numeric values representing X, Y coordinates of structural
+        variations breakpoints in the matrix.
+    labels : numpy.array of str
+        An N X 1 array of labels corresponding to SV type.
+    """
+    # Get coordinates to match binning
+    res = clr.binsize
+    sv_df.start = (sv_df.start // res) * res
+    sv_df.end = (sv_df.end // res) * res
+    # Put start and end in the same column, 1 row / breakpoint
+    s_df = sv_df.loc[:, ["sv_type", "chrom", "start"]]
+    s_df.rename(index=str, columns={"start": "pos"}, inplace=True)
+    e_df = sv_df.loc[:, ["sv_type", "chrom", "end"]]
+    e_df.rename(index=str, columns={"end": "pos"}, inplace=True)
+    sv_df = pd.concat([s_df, e_df]).reset_index(drop=True)
+    # Assign matrix coordinate (fragment index) to each breakpoint
+    sv_frags = sv_df.merge(
+        clr.bins()[:],
+        left_on=["chrom", "pos"],
+        right_on=["chrom", "start"],
+        how="left",
+    )
+    breakpoints = np.vstack([sv_frags.coord, sv_frags.coord]).T
+    breakpoints.astype(int)
+    labels = np.array(sv_frags.sv_type.tolist())
+    return breakpoints, labels
+
+
+def subset_mat(clr, coords, labels, win_size, prop_negative=0.5):
+    """
+    Samples evenly sized windows from a matrix. Windows are centered around
+    input coordinates. Windows and their associated labels are returned. A number
+    of random negative windows (without sv) will be added to the output so that
+    there are prop_negative negative negative windows in the output.
+
+    Parameters
+    ----------
+    clr : cooler.Cooler
+        Cooler object containing Hi-C data.
     coords : numpy.ndarray of ints
         Pairs of coordinates for which subsets should be generated. A window
         centered around each of these coordinates will be sampled. Dimensions
         are [N, 2].
     labels : numpy.ndarray of ints
-        1D array of labels corresponding to the coords given.
-    X : numpy.array
-        Matrix slices, array of N x win_size x win_size.
-    Y : numpy.array
-        Labels (class) representing the different SV types.
+    win_size : int
+        Size of windows to sample from the matrix.
+    prop_negative : float
+        The proportion of windows without SVs desired. If set to 0.5, when given
+        a list of 23 SV, the function will output 46 observations (windows); 23
+        without SV (picked randomly in the matrix) and 23 with SV.
+
+    Returns
+    -------
+    x : numpy.ndarray of floats
+        The 3D feature vector to use as input in a keras model.
+        Dimensions are [N, win_size, win_size].
+    y : numpy.array of ints
+        The 1D label vector of N values to use as prediction in a keras model.
     """
-
-    def __init__(self, cool_path, sv_df, win_size=128):
-        self.cool = cooler.Cooler(cool_path)
-        self.sv = sv_df
-        self.win_size = win_size
-        self.coords = None
-        self.labels = None
-        self.X = None
-        self.Y = None
-        self.pos_to_coord()
-
-    def subset_mat(self, win_size, prop_negative=0.5):
-        """
-        Samples evenly sized windows from a matrix. Windows are centered around
-        input coordinates. Windows and their associated labels are returned.
-
-        Parameters
-        ----------
-        win_size : int
-            Size of windows to sample from the matrix.
-        prop_negative : float
-            The proportion of windows without SVs desired. If set to 0.5, when given
-            a list of 23 SV, the function will output 46 observations (windows); 23
-            without SV (picked randomly in the matrix) and 23 with SV.
-
-        Returns
-        -------
-        x : numpy.ndarray of floats
-            The 3D feature vector to use as input in a keras model.
-            Dimensions are [N, win_size, win_size].
-        y : numpy.array of ints
-            The 1D label vector of N values to use as prediction in a keras model.
-        """
-        self.win_size = win_size
-        h, w = self.mat.shape
-        i_w = int(h - win_size // 2)
-        j_w = int(w - win_size // 2)
-        coords = self.coords
-        labels = self.labels
-        sv_to_int = {"INV": 1, "DEL": 2, "INS": 3}
-        # Only keep coords far enough from borders of the matrix
-        valid_coords = np.where(
-            (coords[:, 0] > int(win_size / 2))
-            & (coords[:, 1] > int(win_size / 2))
-            & (coords[:, 0] < i_w)
-            & (coords[:, 1] < j_w)
-        )[0]
-        coords = coords[valid_coords, :]
-        labels = labels[valid_coords]
-        # Number of windows to generate (including negative windows)
-        n_windows = int(coords.shape[0] // (1 - prop_negative))
-        x = np.zeros((n_windows, win_size, win_size), dtype=np.float64)
-        y = np.zeros(n_windows, dtype=np.int64)
-        if win_size >= min(h, w):
-            print("Window size must be smaller than the Hi-C matrix.")
-        matrix = self.mat.tocsr()
-        halfw = win_size // 2
-        # Getting SV windows
-        for i in range(coords.shape[0]):
-            c = coords[i, :]
-            win = matrix[
-                (c[0] - halfw) : (c[0] + halfw),
-                (c[1] - halfw) : (c[1] + halfw),
-            ]
-            x[i, :, :] = hcv.sparse_to_dense(win, remove_diag=False)
-            y[i] = sv_to_int[labels[i]]
-        # Getting negative windows
-        neg_coords = set()
-        for i in range(coords.shape[0], n_windows):
-            tries = 0
+    h, w = clr.shape
+    i_w = int(h - win_size // 2)
+    j_w = int(w - win_size // 2)
+    sv_to_int = {"INV": 1, "DEL": 2, "INS": 3}
+    # Only keep coords far enough from borders of the matrix
+    valid_coords = np.where(
+        (coords[:, 0] > int(win_size / 2))
+        & (coords[:, 1] > int(win_size / 2))
+        & (coords[:, 0] < i_w)
+        & (coords[:, 1] < j_w)
+    )[0]
+    coords = coords[valid_coords, :]
+    labels = labels[valid_coords]
+    # Number of windows to generate (including negative windows)
+    n_windows = int(coords.shape[0] // (1 - prop_negative))
+    x = np.zeros((n_windows, win_size, win_size), dtype=np.float64)
+    y = np.zeros(n_windows, dtype=np.int64)
+    if win_size >= min(h, w):
+        print("Window size must be smaller than the Hi-C matrix.")
+    halfw = win_size // 2
+    # Getting SV windows
+    for i in range(coords.shape[0]):
+        c = coords[i, :]
+        win = clr.matrix(sparse=False, balance=True)[
+            (c[0] - halfw) : (c[0] + halfw),
+            (c[1] - halfw) : (c[1] + halfw),
+        ]
+        x[i, :, :] = win
+        y[i] = sv_to_int[labels[i]]
+    # Getting negative windows
+    neg_coords = set()
+    for i in range(coords.shape[0], n_windows):
+        tries = 0
+        c = np.random.randint(win_size // 2, i_w)
+        # this coordinate must not exist already
+        while (c in coords[:, 0]) or (c in neg_coords):
+            print(
+                "{} is already used. Trying another position...".format(c)
+            )
+            # If unable to find new coords, just return output until here
+            if tries > 100:
+                return x[:i, :, :], y[:i]
+            neg_coords.add(c)
             c = np.random.randint(win_size // 2, i_w)
-            # this coordinate must not exist already
-            while (c in coords[:, 0]) or (c in neg_coords):
-                print(
-                    "{} is already used. Trying another position...".format(c)
-                )
-                # If unable to find new coords, just return output until here
-                if tries > 100:
-                    return x[:i, :, :], y[:i]
-                neg_coords.add(c)
-                c = np.random.randint(win_size // 2, i_w)
-                tries += 1
-            win = matrix[(c - halfw) : (c + halfw), (c - halfw) : (c + halfw)]
-            x[i, :, :] = hcv.sparse_to_dense(win, remove_diag=False)
-            y[i] = 0
-            self.X, self.Y = x.astype(int), y
-        return self.X, self.Y
-
-    def pos_to_coord(self):
-        """
-        Converts start - end genomic positions from structural variations to breakpoints
-        in matrix coordinates.
-
-        Parameters
-        ----------
-        sv_df : pandas.DataFrame
-            A dataframe containg the type and genomic start-end coordinates of
-            strucural variations as given by generate_sv().
-        frags_df : pandas.DataFrame
-            A dataframe containing the list of fragments of bins in the Hi-C matrix.
-        bin_size : int
-            The bin size used for the matrix.
-
-        Returns
-        -------
-        breakpoints : numpy.array of int
-            A N x 2 numpy array of numeric values representing X, Y coordinates of structural
-            variations breakpoints in the matrix.
-        labels : numpy.array of str
-            An N X 1 array of labels corresponding to SV type.
-        """
-        # Get coordinates to match binning
-        res = self.cool.binsize
-        self.sv.start = (self.sv.start // res) * res
-        self.sv.end = (self.sv.end // res) * res
-        # Put start and end in the same column, 1 row / breakpoint
-        s_df = self.sv.loc[:, ["sv_type", "chrom", "start"]]
-        s_df.rename(index=str, columns={"start": "pos"}, inplace=True)
-        e_df = self.sv.loc[:, ["sv_type", "chrom", "end"]]
-        e_df.rename(index=str, columns={"end": "pos"}, inplace=True)
-        self.sv = pd.concat([s_df, e_df]).reset_index(drop=True)
-        # Assign matrix coordinate (fragment index) to each breakpoint
-        sv_frags = self.sv.merge(
-            self.cool.bins()[:],
-            left_on=["chrom", "pos"],
-            right_on=["chrom", "start_pos"],
-            how="left",
-        )
-        breakpoints = np.vstack([sv_frags.coord, sv_frags.coord]).T
-        breakpoints.astype(int)
-        labels = np.array(sv_frags.sv_type.tolist())
-        self.coords, self.labels = breakpoints, labels
+            tries += 1
+        win = clr.matrix(sparse=False, balance=True)[
+            (c - halfw) : (c + halfw), (c - halfw) : (c + halfw)
+        ]
+        x[i, :, :] = win
+        y[i] = 0
+        x = x.astype(int)
+    return x, y

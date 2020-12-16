@@ -4,6 +4,7 @@
 import input_utils as iu
 import os
 from os.path import join
+import cooler
 import hicstuff.pipeline as hpi
 import hicstuff.io as hio
 import numpy as np
@@ -51,9 +52,11 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
     """
     pathlib.Path(outdir).mkdir(parents=True, exist_ok=True)
     mixer = iu.GenomeMixer(fasta, CONFIG_PATH, "Debug")
+    if reads1 is None or reads2 is None:
+        raise NotImplementedError("Reads generation not implemented yet.")
     # Make edited genomes
     for i in range(nruns):
-        rundir = outdir + f"_{i}"
+        rundir = join(outdir, f"RUN_{i}")
         os.makedirs(rundir, exist_ok=True)
         # Generate random structural variations and apply them to the genome
         mixer.generate_sv()
@@ -73,10 +76,9 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
             mat_fmt="cool",
         )
         # Extract window around each SV and as many random windows
-        cool_path = join(rundir, f"RUN_{i}.cool")
-        slicer = iu.MatrixSlicer(cool_path, mixer.sv)
-        slicer.pos_to_coord()
-        X, Y = slicer.subset_mat(win_size=128, prop_negative=0.5)
+        clr = cooler.Cooler(join(rundir, f"RUN_{i}.cool"))
+        breakpoints, labels = iu.pos_to_coord(clr, mixer.sv)
+        X, Y = slicer.subset_mat(clr, coords, labels, win_size=128, prop_negative=0.5)
         # Save all those windows and associated label (SV type) to a file
         np.save(join(rundir, "x.npy"), X)
         np.save(join(rundir, "y.npy"), Y)
@@ -90,3 +92,6 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         labs = np.append(labs, np.load(join(outdir + f"_{i}", "y.npy")))
     np.save(join(outdir, "x.npy"), feats)
     np.save(join(outdir, "y.npy"), labs)
+
+if __name__=="__main__":
+    run_scrambles()

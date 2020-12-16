@@ -5,6 +5,7 @@
 * [x] Boilerplate for editing genomes and generating matrices.
 * [x] Storing SV positions and windows.
 * [ ] Implementing all SV types (only inversions for now)
+* [ ] Synthetic reads generation.
 
 This repo contains a program to generate scrambled Hi-C maps. The program starts from an input genome and Hi-C library (reads) and introduces structural variants into the genome. Structural variants (SV) are large scale alteration to the sequence including:
 
@@ -22,7 +23,7 @@ The simplest approach to generating scrambled maps would be to directly reorder 
 
 The pipeline requires a genome (fasta format) and an optional Hi-C library (fastq format). If no library is supplied, a synthetic library will be generated from the genome to generate a matrix with a simple gradient without particular 3D structure.
 
-A YAML configuration file is provided to define profiles. These profiles dictate the type of SV to generate and their properties (size, frequency, ...).
+A json configuration file is provided to define profiles. These profiles dictate the type of SV to generate and their properties (size, frequency, ...).
 
 ## Output
 
