@@ -14,7 +14,6 @@ import pathlib
 import click
 CONFIG_PATH = join(os.path.dirname(__file__), "config", "template.json")
 
-
 @click.command()
 @click.option(
     "--reads1", "-1", default=None, help="Forward Hi-C reads",

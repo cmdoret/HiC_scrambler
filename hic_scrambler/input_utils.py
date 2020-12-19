@@ -140,7 +140,7 @@ class GenomeMixer(object):
             out_sv.end.astype(int),
         )
         # Randomize rows in SV table to mix the order of different SV types
-        out_sv = out_sv.sample(frac=1)
+        out_sv = out_sv.sample(frac=1).reset_index(drop=True)
         self.sv = out_sv
 
     def edit_genome(self, fasta_out):
@@ -178,10 +178,12 @@ def save_sv(sv_df, clr, path):
     The order of SVs in that table matches the order in which they were
     introduced in the genome.
     """
-    breakpoints, labels = pos_to_coord(clr, sv_df)
     full_sv = sv_df.copy()
-    full_sv["x"] = breakpoints[:, 0]
-    full_sv["y"] = breakpoints[:, 1]
+    full_sv['coord_start'] = 0
+    full_sv['coord_end'] = 0
+    for i in range(full_sv.shape[0]):
+        chrom, start, end = full_sv.loc[i, ['chrom', 'start', 'end']]
+        full_sv.loc[i, ['coord_start', 'coord_end']] = clr.extent( f'{chrom}:{start}-{end}')
     full_sv.to_csv(path, sep='\t', index=False)
 
 
