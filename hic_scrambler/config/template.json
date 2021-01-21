@@ -3,10 +3,16 @@
         "SV_freq": 0.00001,
         "SV_types": {
             "INV": {
-                "prop": 1,
+                "prop": 0.5,
                 "mean_size": 100000,
                 "sd_size": 10000,
                 "code": 1
+            }
+            "INV": {
+                "prop": 0.5,
+                "mean_size": 100000,
+                "sd_size": 10000,
+                "code": 2
             }
         }
     },

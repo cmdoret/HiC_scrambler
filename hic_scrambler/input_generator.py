@@ -12,7 +12,9 @@ import shutil as su
 import pandas as pd
 import pathlib
 import click
+
 CONFIG_PATH = join(os.path.dirname(__file__), "config", "template.json")
+
 
 @click.command()
 @click.option(
@@ -76,12 +78,14 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         # Extract window around each SV and as many random windows
         clr = cooler.Cooler(join(rundir, f"RUN_{i}.cool"))
         breakpoints, labels = iu.pos_to_coord(clr, mixer.sv)
-        X, Y = iu.subset_mat(clr, breakpoints, labels, win_size=128, prop_negative=0.5)
+        X, Y = iu.subset_mat(
+            clr, breakpoints, labels, win_size=128, prop_negative=0.5
+        )
         # Save all corresponding Hi-C windows and associated label (SV type) to a file
         np.save(join(rundir, "x.npy"), X)
         np.save(join(rundir, "y.npy"), Y)
         # Save list of SVs coordinates
-        iu.save_sv(mixer.sv, clr, join(rundir, 'breakpoints.tsv'))
+        iu.save_sv(mixer.sv, clr, join(rundir, "breakpoints.tsv"))
 
     # For convenience, also generate a file with the windows and labels from
     # all combined runs
@@ -94,5 +98,7 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
     np.save(join(outdir, "x.npy"), feats)
     np.save(join(outdir, "y.npy"), labs)
 
-if __name__=="__main__":
-    run_scrambles()
+
+if __name__ == "__main__":
+    run_scrambles()  # pylint: disable=no-value-for-parameter
+

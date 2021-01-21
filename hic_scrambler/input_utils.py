@@ -167,10 +167,18 @@ class GenomeMixer(object):
                             mutseq[start:end] = Seq.reverse_complement(
                                 mutseq[start:end]
                             )
+                    elif sv_type == "DEL":
+                        if chr == chrom.id:
+                            mutseq[start:end] = mutseq[:start] + mutseq[end:]
+                    else:
+                        raise NotImplementedError(
+                            "SV type not implemented yet."
+                        )
                 chrom = SeqIO.SeqRecord(
                     seq=mutseq, id=chrom.id, description=""
                 )
                 SeqIO.write(chrom, fa_out, format="fasta")
+
 
 def save_sv(sv_df, clr, path):
     """
@@ -179,12 +187,14 @@ def save_sv(sv_df, clr, path):
     introduced in the genome.
     """
     full_sv = sv_df.copy()
-    full_sv['coord_start'] = 0
-    full_sv['coord_end'] = 0
+    full_sv["coord_start"] = 0
+    full_sv["coord_end"] = 0
     for i in range(full_sv.shape[0]):
-        chrom, start, end = full_sv.loc[i, ['chrom', 'start', 'end']]
-        full_sv.loc[i, ['coord_start', 'coord_end']] = clr.extent( f'{chrom}:{start}-{end}')
-    full_sv.to_csv(path, sep='\t', index=False)
+        chrom, start, end = full_sv.loc[i, ["chrom", "start", "end"]]
+        full_sv.loc[i, ["coord_start", "coord_end"]] = clr.extent(
+            f"{chrom}:{start}-{end}"
+        )
+    full_sv.to_csv(path, sep="\t", index=False)
 
 
 def pos_to_coord(clr, sv_df):
@@ -220,7 +230,7 @@ def pos_to_coord(clr, sv_df):
     sv_df = pd.concat([s_df, e_df]).reset_index(drop=True)
     # Assign matrix coordinate (fragment index) to each breakpoint
     bins = clr.bins()[:]
-    bins['coord'] = bins.index
+    bins["coord"] = bins.index
     sv_frags = sv_df.merge(
         bins,
         left_on=["chrom", "pos"],
@@ -231,7 +241,6 @@ def pos_to_coord(clr, sv_df):
     breakpoints.astype(int)
     labels = np.array(sv_frags.sv_type.tolist())
     return breakpoints, labels
-    
 
 
 def subset_mat(clr, coords, labels, win_size, prop_negative=0.5):
@@ -289,8 +298,7 @@ def subset_mat(clr, coords, labels, win_size, prop_negative=0.5):
     for i in range(coords.shape[0]):
         c = coords[i, :]
         win = clr.matrix(sparse=False, balance=False)[
-            (c[0] - halfw) : (c[0] + halfw),
-            (c[1] - halfw) : (c[1] + halfw),
+            (c[0] - halfw) : (c[0] + halfw), (c[1] - halfw) : (c[1] + halfw),
         ]
         x[i, :, :] = win
         y[i] = sv_to_int[labels[i]]
@@ -301,9 +309,7 @@ def subset_mat(clr, coords, labels, win_size, prop_negative=0.5):
         c = np.random.randint(win_size // 2, i_w)
         # this coordinate must not exist already
         while (c in coords[:, 0]) or (c in neg_coords):
-            print(
-                "{} is already used. Trying another position...".format(c)
-            )
+            print("{} is already used. Trying another position...".format(c))
             # If unable to find new coords, just return output until here
             if tries > 100:
                 return x[:i, :, :], y[:i]
