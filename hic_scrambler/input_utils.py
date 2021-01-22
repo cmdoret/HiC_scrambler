@@ -114,15 +114,21 @@ class GenomeMixer(object):
         """
         # Relative abundance of each event type (placeholder values)
         # rel_abun = {"INV": 8, "DEL": 400, "DUP": 60, "INS": 160, "CNV": 350}
+        all_chroms_sv = []
         for chrom, size in self.chromsizes.items():
-            n_sv = size * self.config["SV_freq"]
-            out_sv = pd.DataFrame(np.empty((int(n_sv), 4)))
-            out_sv.columns = ["sv_type", "chrom", "start", "end"]
+            n_sv = round(size * self.config["SV_freq"])
+            chrom_sv = pd.DataFrame(np.empty((n_sv, 4)))
+            chrom_sv.columns = ["sv_type", "chrom", "start", "end"]
             sv_count = 0
             for sv_name, sv_char in self.config["SV_types"].items():
                 # multiply proportion of SV type by total SV freq desired to
                 # get number of events of this type.
-                n_event = int(n_sv * sv_char["prop"])
+                n_event = round(n_sv * sv_char["prop"])
+
+                # Safeguard rounding errors
+                if sv_count + n_event > n_sv:
+                    n_event -= (n_event + sv_count) - n_sv
+                
                 print("Generating {0} {1}".format(n_event, sv_name))
                 for _ in range(n_event):
                     # Start position is random and length is picked from a normal
@@ -133,8 +139,10 @@ class GenomeMixer(object):
                     )
                     # Make sure the inversion does not go beyond chromosome.
                     end = min(size, end)
-                    out_sv.iloc[sv_count, :] = (sv_name, chrom, start, end)
+                    chrom_sv.iloc[sv_count, :] = (sv_name, chrom, start, end)
                     sv_count += 1
+                    all_chroms_sv.append(chrom_sv)
+        out_sv = pd.concat(all_chroms_sv, axis=0)
         out_sv.start, out_sv.end = (
             out_sv.start.astype(int),
             out_sv.end.astype(int),

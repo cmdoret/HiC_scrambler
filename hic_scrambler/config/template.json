@@ -7,8 +7,8 @@
                 "mean_size": 100000,
                 "sd_size": 10000,
                 "code": 1
-            }
-            "INV": {
+            },
+            "DEL": {
                 "prop": 0.5,
                 "mean_size": 100000,
                 "sd_size": 10000,
