@@ -104,7 +104,7 @@ class GenomeMixer(object):
         """
         Generates random structural variations, based on the parameters loaded
         from the instance's config file.
-        # NOTE: Currently only implemented for inversions.
+        # NOTE: Currently only implemented for inversions and deletions.
 
         Returns
         -------
@@ -134,14 +134,14 @@ class GenomeMixer(object):
                     # Start position is random and length is picked from a normal
                     # distribution centered around mean length.
                     start = np.random.randint(size)
-                    end = start + np.random.normal(
+                    end = start + abs(np.random.normal(
                         loc=sv_char["mean_size"], scale=sv_char["sd_size"]
-                    )
+                    ))
                     # Make sure the inversion does not go beyond chromosome.
                     end = min(size, end)
                     chrom_sv.iloc[sv_count, :] = (sv_name, chrom, start, end)
                     sv_count += 1
-                    all_chroms_sv.append(chrom_sv)
+            all_chroms_sv.append(chrom_sv)
         out_sv = pd.concat(all_chroms_sv, axis=0)
         out_sv.start, out_sv.end = (
             out_sv.start.astype(int),
@@ -156,36 +156,67 @@ class GenomeMixer(object):
         Given a fasta file and a dataframe of structural variants and their
         positions, generate a new genome by applying the input changes.
 
+        Coordinates in self.sv are updated as the genome is modified.
+
         Parameters
         ----------
         fasta_out : str
             Path where the edited genome will be written in fasta format.
         """
         with open(fasta_out, "w") as fa_out:
-            for chrom in SeqIO.parse(self.genome_path, format="fasta"):
-                mutseq = Seq.MutableSeq(str(chrom.seq))
+            for rec in SeqIO.parse(self.genome_path, format="fasta"):
+                mutseq = Seq.MutableSeq(str(rec.seq))
                 for row_num in range(self.sv.shape[0]):
                     row = self.sv.iloc[row_num, :]
                     sv_type = row.sv_type
-                    chr, start, end = row.chrom, int(row.start), int(row.end)
+                    chrom, start, end = row.chrom, int(row.start), int(row.end)
                     # NOTE: Only implemented for inversions for now.
                     if sv_type == "INV":
                         # Reverse complement to generate inversion
-                        if chr == chrom.id:
+                        if chrom == rec.id:
                             mutseq[start:end] = Seq.reverse_complement(
                                 mutseq[start:end]
                             )
+                            # Update coordinates of other SVs in the INV region
+                            mid = (end + start) // 2
+                            starts = self.sv.eval(
+                                '(chrom == @chrom) & (start >= @start) & (start <= @end)')
+                            ends = self.sv.eval(
+                                '(chrom == @chrom) & (end >= @start) & (end <= @end)') 
+                            self.sv.loc[starts, 'start'] = mid + mid - self.sv.start[starts]
+                            self.sv.loc[ends, 'end'] = mid + mid - self.sv.end[ends] 
+                            # Make sure start is always lower than end
+                            swap_mask = self.sv.start > self.sv.end
+                            self.sv.loc[swap_mask, ['start', 'end']] = self.sv.loc[
+                                    swap_mask, ['end', 'start']
+                            ].values
                     elif sv_type == "DEL":
-                        if chr == chrom.id:
-                            mutseq[start:end] = mutseq[:start] + mutseq[end:]
+                        if chrom == rec.id:
+                            mutseq = mutseq[:start] + mutseq[end:]
+                            # Shift coordinates on the right of DEL region
+                            self.sv.loc[
+                                (self.sv.chrom == chrom) & 
+                                (self.sv.start >= start),
+                                ['start', 'end']
+                            ] -= (end - start)
+                            self.sv.start[self.sv.start < 0] = 0
+                            self.sv.end[self.sv.end< 0] = 0
                     else:
                         raise NotImplementedError(
                             "SV type not implemented yet."
                         )
-                chrom = SeqIO.SeqRecord(
-                    seq=mutseq, id=chrom.id, description=""
+                self.sv.start = self.sv.start.astype(int)
+                self.sv.end = self.sv.end.astype(int)
+                # Discard SV that have been erased by others
+                self.sv = self.sv.loc[(self.sv.end - self.sv.start) > 1, :]
+                rec = SeqIO.SeqRecord(
+                    seq=mutseq, id=rec.id, description=""
                 )
-                SeqIO.write(chrom, fa_out, format="fasta")
+                # Trim SV with coordinates > chrom size
+                self.sv.end[
+                    (self.sv.chrom == chrom) & (self.sv.end >= len(mutseq))
+                ] = len(mutseq) -1
+                SeqIO.write(rec, fa_out, format="fasta")
 
 
 def save_sv(sv_df, clr, path):
@@ -303,11 +334,15 @@ def subset_mat(clr, coords, labels, win_size, prop_negative=0.5):
         print("Window size must be smaller than the Hi-C matrix.")
     halfw = win_size // 2
     # Getting SV windows
+    coords = coords.astype(int)
     for i in range(coords.shape[0]):
         c = coords[i, :]
-        win = clr.matrix(sparse=False, balance=False)[
-            (c[0] - halfw) : (c[0] + halfw), (c[1] - halfw) : (c[1] + halfw),
-        ]
+        try:
+            win = clr.matrix(sparse=False, balance=False)[
+                (c[0] - halfw) : (c[0] + halfw), (c[1] - halfw) : (c[1] + halfw),
+            ]
+        except TypeError:
+            breakpoint()
         x[i, :, :] = win
         y[i] = sv_to_int[labels[i]]
     # Getting negative windows

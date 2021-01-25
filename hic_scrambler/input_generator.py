@@ -67,7 +67,7 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
             mod_genome,
             reads1,
             reads2,
-            aligner="bwa",
+            aligner="bowtie2",
             tmp_dir=tmpdir,
             out_dir=rundir,
             prefix=f"RUN_{i}",
