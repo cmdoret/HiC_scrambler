@@ -4,14 +4,43 @@
         "SV_types": {
             "INV": {
                 "prop": 0.5,
-                "mean_size": 100000,
-                "sd_size": 10000,
+                "mean_size": 20000,
+                "sd_size": 5000,
                 "code": 1
             },
             "DEL": {
                 "prop": 0.5,
-                "mean_size": 100000,
-                "sd_size": 10000,
+                "mean_size": 8000,
+                "sd_size": 4000,
+                "code": 2
+            }
+        }
+    },
+    "Scaffolding": {
+        "SV_freq": 0.00001,
+        "SV_types": {
+            "INV": {
+                "prop": 0.4,
+                "mean_size": 20000,
+                "sd_size": 5000,
+                "code": 1
+            },
+            "SPL": {
+                "prop": 0.1,
+                "mean_size": 20000,
+                "sd_size": 5000,
+                "code": 1
+            },
+            "MRG": {
+                "prop": 0.1,
+                "mean_size": 20000,
+                "sd_size": 5000,
+                "code": 1
+            },
+            "TRA": {
+                "prop": 0.40,
+                "mean_size": 8000,
+                "sd_size": 4000,
                 "code": 2
             }
         }
