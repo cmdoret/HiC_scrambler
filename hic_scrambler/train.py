@@ -8,6 +8,9 @@ DATA_PATH = join('data/input/training', PROFILE)
 MODEL_PATH = join('data/models', PROFILE)
 
 x_data, y_data = ml.load_data(DATA_PATH)
-sv_model = ml.create_model()
+sv_model = ml.create_model(
+    img_size=x.shape[1],
+    n_labels=len(np.unique(y_data))
+)
 sv_model.fit(x_data, y_data, epochs=15)
 ml.save_model(sv_model, MODEL_PATH)
