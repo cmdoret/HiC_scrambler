@@ -26,19 +26,34 @@ def load_data(training_path="data/input/training"):
     x_data = np.vstack(list(x_data))
     y_data = np.hstack(list(y_data))
     x_data = tf.keras.utils.normalize(x_data, axis=1)
+    # X must be 4D (for convolutional layers) and made up of floats
+    x_data = x_data[:, :, :, None].astype(float)
     return x_data, y_data
 
 
-def create_model():
+def create_model(img_size, n_labels):
     """Builds model from scratch for training"""
     # Initializes a sequential model (i.e. linear stack of layers)
     model = tf.keras.models.Sequential()
 
+    # Need to start w/ some conv layers to use neighbourhood info
+    # conv2d(n_output_channels, kernel_size, ...)
+    # 128x128 - (k-1) -> 126x126
+    model.add(tf.keras.layers.Conv2D(4, 3, activation='relu'))
+
+    # 126x126 / 2 -> 63x63
+    model.add(tf.keras.layers.MaxPooling2D((2, 2)))
+
+    # Finish up by flattening and feeding to a dense layer
+    # 63x63 -> 63**2x1
     model.add(tf.keras.layers.Flatten())  # Flattens input matrix
 
     # NN layer that takes an array of 128 values as input into a 1D array
-    model.add(tf.keras.layers.Dense(128, activation=tf.nn.relu))
-    model.add(tf.keras.layers.Dense(10, activation=tf.nn.softmax))
+    model.add(tf.keras.layers.Dense(
+        (img_size - 2 // 2)**2,
+        activation=tf.nn.relu
+    ))
+    model.add(tf.keras.layers.Dense(n_labels, activation=tf.nn.softmax))
 
     model.compile(
         optimizer="adam", loss="sparse_categorical_crossentropy", metrics=["accuracy"]
@@ -63,7 +78,7 @@ def save_model(model, model_dir):
     model_json = model.to_json()
     with open(join(model_dir, "model.json"), "w") as json_file:
         json_file.write(model_json)
-    model.save_weigths(join(model_dir, "weights.h5"))
+    model.save_weights(join(model_dir, "weights.h5"))
 
 
 def train_and_evaluate_model(model, x_train, y_train, x_test, y_test):
@@ -75,13 +90,15 @@ def train_and_evaluate_model(model, x_train, y_train, x_test, y_test):
 if __name__ == "__main__":
     n_folds = 5
     x_data, y_data = load_data()
+    img_size = x_data.shape[1]
+    n_labels = len(np.unique(y_data))
     # Splits data into kfolds for cross validation
     kfold = StratifiedKFold(n_splits=n_folds, shuffle=True)
     kfold_acc, kfold_loss = [None] * n_folds, [None] * n_folds
     for i, (train, test) in enumerate(kfold.split(x_data, y_data)):
         print("Running Fold", i + 1, "/", n_folds)
         model = None  # Clearing the NN.
-        model = create_model()
+        model = create_model(img_size, n_labels)
         kfold_loss[i], kfold_acc[i] = train_and_evaluate_model(
             model, x_data[train], y_data[train], x_data[test], y_data[test]
         )
@@ -92,21 +109,24 @@ if __name__ == "__main__":
     plt.bar(range(len(kfold_acc)), height=kfold_acc)
     plt.show()
 
-    # On all data at once
-    history = model.fit(x_data, y_data, epochs=15)
+    # Compare training and testing performance
+    history = model.fit(x_data, y_data, epochs=15, validation_split=0.2)
+    breakpoint()
     # Plot training & validation accuracy values
-    plt.plot(history.history["acc"])
+    plt.plot(history.history["accuracy"], label='Train')
+    plt.plot(history.history["val_accuracy"], label='Test')
     plt.title("Model accuracy")
     plt.ylabel("Accuracy")
     plt.xlabel("Epoch")
-    plt.legend(["Train", "Test"], loc="upper left")
+    plt.legend(loc="upper left")
     plt.show()
 
     # Plot training & validation loss values
-    plt.plot(history.history["loss"])
+    plt.plot(history.history["loss"], label='Train')
+    plt.plot(history.history["val_loss"], label='Test')
     plt.title("Model loss")
     plt.ylabel("Loss")
     plt.xlabel("Epoch")
-    plt.legend(["Train", "Test"], loc="upper left")
+    plt.legend(loc="upper left")
     plt.show()
 
