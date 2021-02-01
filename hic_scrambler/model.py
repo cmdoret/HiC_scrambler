@@ -31,7 +31,7 @@ def load_data(training_path="data/input/training"):
     return x_data, y_data
 
 
-def create_model(img_size, n_labels):
+def create_model(img_size, n_labels, n_neurons=18):
     """Builds model from scratch for training"""
     # Initializes a sequential model (i.e. linear stack of layers)
     model = tf.keras.models.Sequential()
@@ -39,7 +39,7 @@ def create_model(img_size, n_labels):
     # Need to start w/ some conv layers to use neighbourhood info
     # conv2d(n_output_channels, kernel_size, ...)
     # 128x128 - (k-1) -> 126x126
-    model.add(tf.keras.layers.Conv2D(4, 3, activation='relu'))
+    model.add(tf.keras.layers.Conv2D(3, 3, activation='relu'))
 
     # 126x126 / 2 -> 63x63
     model.add(tf.keras.layers.MaxPooling2D((2, 2)))
@@ -49,10 +49,12 @@ def create_model(img_size, n_labels):
     model.add(tf.keras.layers.Flatten())  # Flattens input matrix
 
     # NN layer that takes an array of 128 values as input into a 1D array
-    model.add(tf.keras.layers.Dense(
-        (img_size - 2 // 2)**2,
-        activation=tf.nn.relu
-    ))
+    model.add(tf.keras.layers.Dense(n_neurons, activation=tf.nn.relu))
+    # NN layer that takes an array of 129 values as input into a 1D array
+    #model.add(tf.keras.layers.Dense(
+    #    (img_size - 2 // 2)**2,
+    #    activation=tf.nn.relu
+    #))
     model.add(tf.keras.layers.Dense(n_labels, activation=tf.nn.softmax))
 
     model.compile(
@@ -88,11 +90,13 @@ def train_and_evaluate_model(model, x_train, y_train, x_test, y_test):
 
 
 if __name__ == "__main__":
+    # Exploration, parameter search, validation etc
     n_folds = 5
     x_data, y_data = load_data()
     img_size = x_data.shape[1]
     n_labels = len(np.unique(y_data))
     # Splits data into kfolds for cross validation
+    """
     kfold = StratifiedKFold(n_splits=n_folds, shuffle=True)
     kfold_acc, kfold_loss = [None] * n_folds, [None] * n_folds
     for i, (train, test) in enumerate(kfold.split(x_data, y_data)):
@@ -103,15 +107,27 @@ if __name__ == "__main__":
             model, x_data[train], y_data[train], x_data[test], y_data[test]
         )
     # Loss and accuracy of each fold
-
     plt.bar(range(len(kfold_loss)), height=kfold_loss)
     plt.show()
     plt.bar(range(len(kfold_acc)), height=kfold_acc)
     plt.show()
+    """
 
     # Compare training and testing performance
+    n_neurons=[12, 15, 20, 30]
+    best_acc = 0
+    best_n = None
+    for n in n_neurons:
+        model = create_model(img_size, n_labels, n_neurons=n)
+        history = model.fit(x_data, y_data, epochs=3, validation_split=0.2)
+        acc = history.history['val_accuracy'][-1]
+        if acc > best_acc:
+            best_acc = acc
+            best_n = n
+    print(f"Best accuracy is {best_acc}, obtained with {best_n} neurons.")
+
+    model = create_model(img_size, n_labels, n_neurons=best_n)
     history = model.fit(x_data, y_data, epochs=15, validation_split=0.2)
-    breakpoint()
     # Plot training & validation accuracy values
     plt.plot(history.history["accuracy"], label='Train')
     plt.plot(history.history["val_accuracy"], label='Test')
