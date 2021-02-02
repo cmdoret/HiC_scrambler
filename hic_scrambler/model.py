@@ -14,10 +14,18 @@ def load_data(training_path="data/input/training"):
     """Loads training data from several runs, condatenates and normalize it."""
     # Take all sets in training folder
     x_data = np.sort(
-        [f for f in glob.glob(training_path + "/*") if re.search(r".*x\.npy", f)]
+        [
+            f
+            for f in glob.glob(training_path + "/*")
+            if re.search(r".*x\.npy", f)
+        ]
     )
     y_data = np.sort(
-        [f for f in glob.glob(training_path + "/*") if re.search(r".*y\.npy", f)]
+        [
+            f
+            for f in glob.glob(training_path + "/*")
+            if re.search(r".*y\.npy", f)
+        ]
     )
 
     # Concatenate them into a single array
@@ -39,7 +47,10 @@ def create_model(img_size, n_labels, n_neurons=18):
     # Need to start w/ some conv layers to use neighbourhood info
     # conv2d(n_output_channels, kernel_size, ...)
     # 128x128 - (k-1) -> 126x126
-    model.add(tf.keras.layers.Conv2D(3, 3, activation='relu'))
+    model.add(tf.keras.layers.Conv2D(4, 3, activation="relu"))
+
+    # Dropout to reduce overfitting
+    model.add(tf.keras.layers.Dropout(0.2))
 
     # 126x126 / 2 -> 63x63
     model.add(tf.keras.layers.MaxPooling2D((2, 2)))
@@ -49,16 +60,18 @@ def create_model(img_size, n_labels, n_neurons=18):
     model.add(tf.keras.layers.Flatten())  # Flattens input matrix
 
     # NN layer that takes an array of 128 values as input into a 1D array
-    model.add(tf.keras.layers.Dense(n_neurons, activation=tf.nn.relu))
+    model.add(tf.keras.layers.Dense(n_neurons, activation="relu"))
     # NN layer that takes an array of 129 values as input into a 1D array
-    #model.add(tf.keras.layers.Dense(
+    # model.add(tf.keras.layers.Dense(
     #    (img_size - 2 // 2)**2,
     #    activation=tf.nn.relu
-    #))
-    model.add(tf.keras.layers.Dense(n_labels, activation=tf.nn.softmax))
+    # ))
+    model.add(tf.keras.layers.Dense(n_labels, activation="softmax"))
 
     model.compile(
-        optimizer="adam", loss="sparse_categorical_crossentropy", metrics=["accuracy"]
+        optimizer="adam",
+        loss="sparse_categorical_crossentropy",
+        metrics=["accuracy"],
     )
     return model
 
@@ -70,7 +83,9 @@ def load_model(model_dir="data/models/example"):
     loaded_model = model_from_json(loaded_model_json)
     loaded_model.load_weights(join(model_dir, "weights.h5"))
     loaded_model.compile(
-        loss="sparse_categorical_crossentropy", metrics=["accuracy"], optimizer="adam"
+        loss="sparse_categorical_crossentropy",
+        metrics=["accuracy"],
+        optimizer="adam",
     )
     return loaded_model
 
@@ -114,23 +129,26 @@ if __name__ == "__main__":
     """
 
     # Compare training and testing performance
-    n_neurons=[12, 15, 20, 30]
+    n_neurons = [12, 15, 20, 30]
     best_acc = 0
     best_n = None
+    """
     for n in n_neurons:
         model = create_model(img_size, n_labels, n_neurons=n)
         history = model.fit(x_data, y_data, epochs=3, validation_split=0.2)
-        acc = history.history['val_accuracy'][-1]
+        acc = history.history["val_accuracy"][-1]
         if acc > best_acc:
             best_acc = acc
             best_n = n
     print(f"Best accuracy is {best_acc}, obtained with {best_n} neurons.")
+    """
+    best_n = 15
 
     model = create_model(img_size, n_labels, n_neurons=best_n)
     history = model.fit(x_data, y_data, epochs=15, validation_split=0.2)
     # Plot training & validation accuracy values
-    plt.plot(history.history["accuracy"], label='Train')
-    plt.plot(history.history["val_accuracy"], label='Test')
+    plt.plot(history.history["accuracy"], label="Train")
+    plt.plot(history.history["val_accuracy"], label="Test")
     plt.title("Model accuracy")
     plt.ylabel("Accuracy")
     plt.xlabel("Epoch")
@@ -138,8 +156,8 @@ if __name__ == "__main__":
     plt.show()
 
     # Plot training & validation loss values
-    plt.plot(history.history["loss"], label='Train')
-    plt.plot(history.history["val_loss"], label='Test')
+    plt.plot(history.history["loss"], label="Train")
+    plt.plot(history.history["val_loss"], label="Test")
     plt.title("Model loss")
     plt.ylabel("Loss")
     plt.xlabel("Epoch")
