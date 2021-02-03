@@ -3,4 +3,4 @@
 
 import model as ml
 
-ml.load_model(
+ml.load_model(model_dir="data/tmp/")

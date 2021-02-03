@@ -128,15 +128,17 @@ class GenomeMixer(object):
                 # Safeguard rounding errors
                 if sv_count + n_event > n_sv:
                     n_event -= (n_event + sv_count) - n_sv
-                
+
                 print("Generating {0} {1}".format(n_event, sv_name))
                 for _ in range(n_event):
                     # Start position is random and length is picked from a normal
                     # distribution centered around mean length.
                     start = np.random.randint(size)
-                    end = start + abs(np.random.normal(
-                        loc=sv_char["mean_size"], scale=sv_char["sd_size"]
-                    ))
+                    end = start + abs(
+                        np.random.normal(
+                            loc=sv_char["mean_size"], scale=sv_char["sd_size"]
+                        )
+                    )
                     # Make sure the inversion does not go beyond chromosome.
                     end = min(size, end)
                     chrom_sv.iloc[sv_count, :] = (sv_name, chrom, start, end)
@@ -180,27 +182,33 @@ class GenomeMixer(object):
                             # Update coordinates of other SVs in the INV region
                             mid = (end + start) // 2
                             starts = self.sv.eval(
-                                '(chrom == @chrom) & (start >= @start) & (start <= @end)')
+                                "(chrom == @chrom) & (start >= @start) & (start <= @end)"
+                            )
                             ends = self.sv.eval(
-                                '(chrom == @chrom) & (end >= @start) & (end <= @end)') 
-                            self.sv.loc[starts, 'start'] = mid + mid - self.sv.start[starts]
-                            self.sv.loc[ends, 'end'] = mid + mid - self.sv.end[ends] 
+                                "(chrom == @chrom) & (end >= @start) & (end <= @end)"
+                            )
+                            self.sv.loc[starts, "start"] = (
+                                mid + mid - self.sv.start[starts]
+                            )
+                            self.sv.loc[ends, "end"] = (
+                                mid + mid - self.sv.end[ends]
+                            )
                             # Make sure start is always lower than end
                             swap_mask = self.sv.start > self.sv.end
-                            self.sv.loc[swap_mask, ['start', 'end']] = self.sv.loc[
-                                    swap_mask, ['end', 'start']
-                            ].values
+                            self.sv.loc[
+                                swap_mask, ["start", "end"]
+                            ] = self.sv.loc[swap_mask, ["end", "start"]].values
                     elif sv_type == "DEL":
                         if chrom == rec.id:
                             mutseq = mutseq[:start] + mutseq[end:]
                             # Shift coordinates on the right of DEL region
                             self.sv.loc[
-                                (self.sv.chrom == chrom) & 
-                                (self.sv.start >= start),
-                                ['start', 'end']
+                                (self.sv.chrom == chrom)
+                                & (self.sv.start >= start),
+                                ["start", "end"],
                             ] -= (end - start)
                             self.sv.start[self.sv.start < 0] = 0
-                            self.sv.end[self.sv.end< 0] = 0
+                            self.sv.end[self.sv.end < 0] = 0
                     else:
                         raise NotImplementedError(
                             "SV type not implemented yet."
@@ -209,13 +217,11 @@ class GenomeMixer(object):
                 self.sv.end = self.sv.end.astype(int)
                 # Discard SV that have been erased by others
                 self.sv = self.sv.loc[(self.sv.end - self.sv.start) > 1, :]
-                rec = SeqIO.SeqRecord(
-                    seq=mutseq, id=rec.id, description=""
-                )
+                rec = SeqIO.SeqRecord(seq=mutseq, id=rec.id, description="")
                 # Trim SV with coordinates > chrom size
                 self.sv.end[
                     (self.sv.chrom == chrom) & (self.sv.end >= len(mutseq))
-                ] = len(mutseq) -1
+                ] = (len(mutseq) - 1)
                 SeqIO.write(rec, fa_out, format="fasta")
 
 
@@ -339,7 +345,8 @@ def subset_mat(clr, coords, labels, win_size, prop_negative=0.5):
         c = coords[i, :]
         try:
             win = clr.matrix(sparse=False, balance=False)[
-                (c[0] - halfw) : (c[0] + halfw), (c[1] - halfw) : (c[1] + halfw),
+                (c[0] - halfw) : (c[0] + halfw),
+                (c[1] - halfw) : (c[1] + halfw),
             ]
         except TypeError:
             breakpoint()
@@ -366,3 +373,15 @@ def subset_mat(clr, coords, labels, win_size, prop_negative=0.5):
         y[i] = 0
         x = x.astype(int)
     return x, y
+
+
+def matrix_diag_chunks(matrix, size=128, stride=1):
+    """Given an input matrix, yield a generator of chunks along the diagonal"""
+    m, n = matrix.shape
+    if m != n:
+        raise ValueError("Input matrix must be square.")
+    for i in range(0, matrix.shape - size, stride):
+        start = i
+        end = start + size
+        chunk = matrix[start:end, start:end]
+        yield chunk

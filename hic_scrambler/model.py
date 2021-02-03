@@ -42,6 +42,7 @@ def load_data(training_path="data/input/training"):
     x_data = x_data[:, :, :, None].astype(float)
     return x_data, y_data
 
+
 def erase_diags(imgs):
     """
     Given a stack of N images of shape x,y of shape (N,x,y), divide each
@@ -50,7 +51,9 @@ def erase_diags(imgs):
     # Mean of each pixel across all imgs
     avg_img = imgs.mean(axis=0)
     # Mean of each diagonal across stack
-    avg_dia = [np.mean(np.diagonal(avg_img, d)) for d in range(avg_img.shape[0])]
+    avg_dia = [
+        np.mean(np.diagonal(avg_img, d)) for d in range(avg_img.shape[0])
+    ]
     # Build matrix as a smooth diagonal gradient
     avg_grd = np.zeros(avg_img.shape)
     for k, v in enumerate(avg_dia):
@@ -59,6 +62,7 @@ def erase_diags(imgs):
     avg_grd = avg_grd + np.transpose(avg_grd) - np.diag(np.diag(avg_grd))
     # Divide each image in the stack by gradient
     return imgs / avg_grd
+
 
 def create_model(img_size, n_labels, n_neurons=18):
     """Builds model from scratch for training"""
@@ -131,16 +135,17 @@ if __name__ == "__main__":
     n_labels = len(np.unique(y_data))
     # Visualize inputs
     fig, ax = plt.subplots(5, 5, sharex=True, sharey=True)
-    label_mapping = {0: 'NORMAL', 1: 'INV', 2: 'DEL'}
+    label_mapping = {0: "NORMAL", 1: "INV", 2: "DEL"}
     sel_id = np.random.choice(range(x_data.shape[0]), size=25)
     for i, a in zip(sel_id, ax.flat):
         a.imshow(np.log1p(x_data[i, :, :]))
         a.set_title(label_mapping[y_data[i]])
-    plt.suptitle('Random examples of input samples')
+    plt.suptitle("Random examples of input samples")
     plt.show()
 
     # Compare training and testing performance
-    n_neurons = [60, 70, 80, 90]
+    """
+    n_neurons = [120, 150, 300]
     best_acc = 0
     best_n = None
     for n in n_neurons:
@@ -151,10 +156,14 @@ if __name__ == "__main__":
             best_acc = acc
             best_n = n
     print(f"Best accuracy is {best_acc}, obtained with {best_n} neurons.")
+    """
 
+    best_n = 300
     model = create_model(img_size, n_labels, n_neurons=best_n)
 
-    print(f'{"-"*10}\nTraining model on {x_data.shape[0]} images of shape {x_data.shape[1]}x{x_data.shape[2]}')
+    print(
+        f'{"-"*10}\nTraining model on {x_data.shape[0]} images of shape {x_data.shape[1]}x{x_data.shape[2]}'
+    )
     history = model.fit(x_data, y_data, epochs=25, validation_split=0.2)
     print(model.summary())
 
@@ -165,12 +174,14 @@ if __name__ == "__main__":
     ax[0].set_title("Model accuracy")
     ax[0].set_ylabel("Accuracy")
     ax[0].set_xlabel("Epoch")
+    ax[0].set_ylim(0, 1)
     # Plot training & validation loss values
     ax[1].plot(history.history["loss"], label="Train")
     ax[1].plot(history.history["val_loss"], label="Test")
     ax[1].set_title("Model loss")
     ax[1].set_ylabel("Loss")
     ax[1].set_xlabel("Epoch")
+    ax[1].set_ylim(0, 1)
     plt.legend(loc="upper left")
     plt.show()
 
