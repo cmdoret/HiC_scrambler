@@ -376,7 +376,10 @@ def subset_mat(clr, coords, labels, win_size, prop_negative=0.5):
 
 
 def matrix_diag_chunks(matrix, size=128, stride=1):
-    """Given an input matrix, yield a generator of chunks along the diagonal"""
+    """
+    Given an input matrix, yield a generator of chunks along the diagonal.
+    Only compatible with symmetric matrices.
+    """
     m, n = matrix.shape
     if m != n:
         raise ValueError("Input matrix must be square.")
@@ -385,3 +388,17 @@ def matrix_diag_chunks(matrix, size=128, stride=1):
         end = start + size
         chunk = matrix[start:end, start:end]
         yield chunk
+
+
+def matrix_tiles(matrix, size=128, stride=1):
+    """
+    Chunk matrix into a grid of overlapping tiles and yield. Yield tiles and
+    their coordinates. Works on asymmetric matrices.
+    """
+    for i in range(0, matrix.shape[0] - size, stride):
+        start_x, end_x = i, i + size
+        for j in range(0, matrix.shape[1] - size, stride):
+            start_y, end_y = j, j + size
+            chunk = matrix[start_x: end_x, start_y:end_y]
+            yield i, j, chunk
+    
