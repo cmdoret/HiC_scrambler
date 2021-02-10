@@ -1,7 +1,7 @@
 # Script used to generate training data for the model
 # Datasets generated consist of an NxWxW array of features and an N array
 # of labels
-import input_utils as iu
+import genome_utils as iu
 import os
 from os.path import join
 import cooler
