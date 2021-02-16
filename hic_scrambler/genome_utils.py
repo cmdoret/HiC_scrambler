@@ -372,3 +372,53 @@ def subset_mat(clr, coords, labels, win_size, prop_negative=0.5):
         y[i] = 0
         x = x.astype(int)
     return x, y
+
+
+def slice_genome(path, out_path, slice_size=1000):
+    """
+    Given an input fasta file, slice a random region of a random chromosome and
+    save it into a new fasta file.
+
+    Parameters
+    ----------
+    path : str
+        Path to the input fasta file.
+    out_path: str
+        Path to the output sliced fasta file.
+    slice_size : int
+        Size of the region to extract, in basepairs.
+    
+    Returns
+    -------
+    ucsc : str
+        UCSC format string representing the region that was sliced.
+    """
+
+    # Generate a mapping of all chromosome names and their sizes
+    chrom_sizes = GenomeMixer.load_chromsizes(path)
+    # Exclude chromosomes smaller than slice_size
+    for chrom, size in chrom_sizes.items():
+        if size < slice_size:
+            del chrom_sizes[chrom]
+
+    # Get list of valid chromosomes
+    chrom_names = list(chrom_sizes.keys())
+
+    # Pick a random region of slice_size bp in a random chromosome and write it
+    picked_chrom = np.random.choice(chrom_names, size=1)[0]
+    start_slice = int(
+        np.random.randint(
+            low=0, high=chrom_sizes[picked_chrom] - slice_size, size=1
+        )
+    )
+    end_slice = int(start_slice + slice_size)
+    with open(out_path, "w") as sub_handle:
+        for rec in SeqIO.parse(path, "fasta"):
+            if rec.id == picked_chrom:
+                rec.Seq = rec.seq[start_slice:end_slice]
+                SeqIO.write(rec, sub_handle, "fasta")
+                break
+
+    # Report the selected region in UCSC format
+    ucsc = f"{picked_chrom}:{start_slice}-{end_slice}"
+    return ucsc
