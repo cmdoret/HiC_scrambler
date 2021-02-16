@@ -10,6 +10,7 @@ import hicstuff.io as hio
 import numpy as np
 import shutil as su
 import pandas as pd
+from Bio import SeqIO, Seq
 import pathlib
 import click
 
@@ -45,20 +46,50 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
     """
     This is the orchestrator function that handles the end-to-end pipeline. For
     each scramble run, it will:
-    1. Edit the genome to add SV
+    0. Select a random region of a random chromosome
+    1. Edit the selected region to add SV
     2. Realign the reads and generate a (cool) Hi-C map from the scrambled genome
     3. Extract windows around each SV as well as random (negative) windows
     4. Store the windows and associated labels into npy files.
+    5. Store the whole matrix before and after SV.
     """
     pathlib.Path(outdir).mkdir(parents=True, exist_ok=True)
-    mixer = iu.GenomeMixer(fasta, CONFIG_PATH, "Debug")
     if reads1 is None or reads2 is None:
         raise NotImplementedError("Reads generation not implemented yet.")
-    # Make edited genomes
+    # Generate an initial contact map for the original genome
+    hpi.full_pipeline(
+        fasta,
+        reads1,
+        reads2,
+        aligner="bowtie2",
+        tmp_dir=tmpdir,
+        out_dir=outdir,
+        prefix="truth",
+        threads=8,
+        enzyme=binsize,
+        mat_fmt="cool",
+    )
+    clr_ori = cooler.Cooler(join(outdir, "truth.cool"))
+    # Make edited genomes. Each edited genome will start from a subset of the
+    # original (full) genome.
     for i in range(nruns):
         rundir = join(outdir, f"RUN_{i}")
+
+        # Subset genome: Pick a random chromosome and slice to generate a matrix of 1000 x 1000
         os.makedirs(rundir, exist_ok=True)
+        sub_fasta = join(rundir, "genome.fa")
+        slice_region = iu.slice_genome(
+            fasta, sub_fasta, slice_size=512 * binsize
+        )
+
+        # Save map corresponding to the slice region (before SV)
+        mat_ori = clr_ori.matrix(sparse=False, balance=False).fetch(
+            slice_region
+        )
+        np.save(join(rundir, "truth.npy"), mat_ori)
+
         # Generate random structural variations and apply them to the genome
+        mixer = iu.GenomeMixer(sub_fasta, CONFIG_PATH, "Debug")
         mixer.generate_sv()
         mod_genome = join(rundir, "mod_genome.fa")
         mixer.edit_genome(mod_genome)
@@ -70,31 +101,46 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
             aligner="bowtie2",
             tmp_dir=tmpdir,
             out_dir=rundir,
-            prefix=f"RUN_{i}",
+            prefix="scrambled",
             threads=8,
             enzyme=binsize,
             mat_fmt="cool",
         )
         # Extract window around each SV and as many random windows
-        clr = cooler.Cooler(join(rundir, f"RUN_{i}.cool"))
-        breakpoints, labels = iu.pos_to_coord(clr, mixer.sv)
+        clr_mod = cooler.Cooler(join(rundir, "scrambled.cool"))
+        breakpoints, labels = iu.pos_to_coord(clr_mod, mixer.sv)
         X, Y = iu.subset_mat(
-            clr, breakpoints, labels, win_size=128, prop_negative=0.5
+            clr_mod, breakpoints, labels, win_size=128, prop_negative=0.5
         )
+        # Save whole slice map (after SV)
+        np.save(
+            join(rundir, f"scrambled_mat.npy"),
+            clr_mod.matrix(sparse=False, balance=False)[:],
+        )
+
         # Save all corresponding Hi-C windows and associated label (SV type) to a file
         np.save(join(rundir, "x.npy"), X)
         np.save(join(rundir, "y.npy"), Y)
         # Save list of SVs coordinates
-        iu.save_sv(mixer.sv, clr, join(rundir, "breakpoints.tsv"))
+        iu.save_sv(mixer.sv, clr_mod, join(rundir, "breakpoints.tsv"))
 
-    # For convenience, also generate a file with the windows and labels from
-    # all combined runs
-    feats = np.concatenate(
-        [np.load(join(outdir, f"RUN_{i}", "x.npy")) for i in range(nruns)]
+    # For convenience, also generate a file with the windows, labels and
+    # matrices from all combined runs
+
+    # Helper functions to concatenate piles of images, or stack individual images
+    conc = lambda base: np.concatenate(
+        [np.load(base.format(i)) for i in range(nruns)]
     )
-    labs = np.concatenate(
-        [np.load(join(outdir, f"RUN_{i}", "y.npy")) for i in range(nruns)]
-    )
+    stack = lambda base: np.dstack(
+        [np.load(base.format(i)) for i in range(nruns)]
+    ).transpose(2, 0, 1)
+
+    feats = conc(join(outdir, "RUN_{}", "x.npy"))
+    labs = conc(join(outdir, "RUN_{}", "y.npy"))
+    oris = stack(join(outdir, "RUN_{}", "truth.npy"))
+    mods = stack(join(outdir, "RUN_{}", "scrambled.npy"))
+    np.save(join(outdir, "truth.npy"), oris)
+    np.save(join(outdir, "scrambled.npy"), mods)
     np.save(join(outdir, "x.npy"), feats)
     np.save(join(outdir, "y.npy"), labs)
 

@@ -66,6 +66,7 @@ def erase_diags(imgs):
     return imgs / avg_grd
 
 
+# Inherits from model, so it has the standard tf methods (fit, evaluate, ...)
 class Unscramble(Model):
     """Autoencoder to generate correct maps from scrambled maps (i.e. with SV)"""
 
@@ -111,44 +112,6 @@ class Unscramble(Model):
         return decoded
 
 
-autoencoder = Denoise()
-
-
-def create_model(img_size, n_labels, n_neurons=18):
-    """Builds model from scratch for training"""
-    # Initializes a sequential model (i.e. linear stack of layers)
-    model = tf.keras.models.Sequential()
-
-    # Need to start w/ some conv layers to use neighbourhood info
-    # conv2d(n_output_channels, kernel_size, ...)
-    # 128x128 - (k-1) -> 126x126
-    model.add(tf.keras.layers.Conv2D(32, 3, activation="relu"))
-    # Dropout to reduce overfitting
-    model.add(tf.keras.layers.Dropout(0.4))
-    # 126x126 / 2 -> 62x62x32
-    model.add(tf.keras.layers.MaxPooling2D((2, 2)))
-    model.add(tf.keras.layers.Conv2D(64, 3, activation="relu"))
-    model.add(tf.keras.layers.Dropout(0.4))
-    # 62x62 / 2 -> 30x30x64
-    model.add(tf.keras.layers.MaxPooling2D((2, 2)))
-    # Finish up by flattening and feeding to a dense layer
-    # 63x63 -> 63**2x1
-    model.add(tf.keras.layers.Flatten())  # Flattens input matrix
-
-    model.add(tf.keras.layers.Dense(n_neurons, activation="relu"))
-    model.add(tf.keras.layers.Dropout(0.2))
-    model.add(tf.keras.layers.Dense(n_neurons, activation="relu"))
-    model.add(tf.keras.layers.Dropout(0.2))
-    model.add(tf.keras.layers.Dense(n_labels, activation="softmax"))
-
-    model.compile(
-        optimizer="adam",
-        loss="sparse_categorical_crossentropy",
-        metrics=["accuracy"],
-    )
-    return model
-
-
 def load_model(model_dir="data/models/example"):
     """Loads a trained neural network from a json file"""
     with open(join(model_dir, "model.json"), "r") as json_file:
@@ -183,6 +146,24 @@ if __name__ == "__main__":
     x_data, y_data = load_data()
     img_size = x_data.shape[1]
     n_labels = len(np.unique(y_data))
+    test_idx = np.random.choice(range(x_data.shape[0]), size=x_data // 5)
+    # test_mask, train_mask = np.zeros(x_data.shape[0]), np.ones(x_data.shape[0])
+    # test_mask[test_idx] = 1
+    # train_mask[test_idx] = 0
+
+    autoencoder = Unscramble()
+    autoencoder.compile(optimizer="adam", loss=tf.losses.MeanSquaredError())
+    autoencoder.fit(
+        x_data, y_data, epochs=10, shuffle=True, validation_split=0.2
+    )
+    autoencoder.encoder.summary()
+    encoded_imgs = autoencoder.encoder(x_data).numpy()
+    decoded_imgs = autoencoder.decoder(encoded_imgs).numpy()
+    print(
+        f'{"-"*10}\nTraining model on {x_data.shape[0]} images of shape {x_data.shape[1]}x{x_data.shape[2]}'
+    )
+    print(autoencoder.summary())
+
     # Visualize inputs
     fig, ax = plt.subplots(5, 5, sharex=True, sharey=True)
     label_mapping = {0: "NORMAL", 1: "INV", 2: "DEL"}
@@ -191,46 +172,4 @@ if __name__ == "__main__":
         a.imshow(np.log1p(x_data[i, :, :]))
         a.set_title(label_mapping[y_data[i]])
     plt.suptitle("Random examples of input samples")
-    plt.show()
-
-    # Compare training and testing performance
-    """
-    n_neurons = [120, 150, 300]
-    best_acc = 0
-    best_n = None
-    for n in n_neurons:
-        model = create_model(img_size, n_labels, n_neurons=n)
-        history = model.fit(x_data, y_data, epochs=7, validation_split=0.2)
-        acc = history.history["val_accuracy"][-1]
-        if acc > best_acc:
-            best_acc = acc
-            best_n = n
-    print(f"Best accuracy is {best_acc}, obtained with {best_n} neurons.")
-    """
-
-    best_n = 300
-    model = create_model(img_size, n_labels, n_neurons=best_n)
-
-    print(
-        f'{"-"*10}\nTraining model on {x_data.shape[0]} images of shape {x_data.shape[1]}x{x_data.shape[2]}'
-    )
-    history = model.fit(x_data, y_data, epochs=25, validation_split=0.2)
-    print(model.summary())
-
-    # Plot training & validation accuracy values
-    fig, ax = plt.subplots(1, 2)
-    ax[0].plot(history.history["accuracy"], label="Train")
-    ax[0].plot(history.history["val_accuracy"], label="Test")
-    ax[0].set_title("Model accuracy")
-    ax[0].set_ylabel("Accuracy")
-    ax[0].set_xlabel("Epoch")
-    ax[0].set_ylim(0, 1)
-    # Plot training & validation loss values
-    ax[1].plot(history.history["loss"], label="Train")
-    ax[1].plot(history.history["val_loss"], label="Test")
-    ax[1].set_title("Model loss")
-    ax[1].set_ylabel("Loss")
-    ax[1].set_xlabel("Epoch")
-    ax[1].set_ylim(0, 1)
-    plt.legend(loc="upper left")
     plt.show()
