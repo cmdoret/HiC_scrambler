@@ -415,7 +415,7 @@ def slice_genome(path, out_path, slice_size=1000):
     with open(out_path, "w") as sub_handle:
         for rec in SeqIO.parse(path, "fasta"):
             if rec.id == picked_chrom:
-                rec.Seq = rec.seq[start_slice:end_slice]
+                rec.seq = rec.seq[start_slice:end_slice]
                 SeqIO.write(rec, sub_handle, "fasta")
                 break
 

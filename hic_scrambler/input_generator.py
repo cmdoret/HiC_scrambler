@@ -64,12 +64,13 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         aligner="bowtie2",
         tmp_dir=tmpdir,
         out_dir=outdir,
-        prefix="truth",
+        prefix="original",
         threads=8,
         enzyme=binsize,
         mat_fmt="cool",
     )
-    clr_ori = cooler.Cooler(join(outdir, "truth.cool"))
+    clr_ori = cooler.Cooler(join(outdir, "original.cool"))
+    slice_bins = 512
     # Make edited genomes. Each edited genome will start from a subset of the
     # original (full) genome.
     for i in range(nruns):
@@ -79,7 +80,7 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         os.makedirs(rundir, exist_ok=True)
         sub_fasta = join(rundir, "genome.fa")
         slice_region = iu.slice_genome(
-            fasta, sub_fasta, slice_size=512 * binsize
+            fasta, sub_fasta, slice_size=slice_bins * binsize
         )
 
         # Save map corresponding to the slice region (before SV)
@@ -114,7 +115,7 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         )
         # Save whole slice map (after SV)
         np.save(
-            join(rundir, f"scrambled_mat.npy"),
+            join(rundir, f"scrambled.npy"),
             clr_mod.matrix(sparse=False, balance=False)[:],
         )
 
@@ -127,22 +128,26 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
     # For convenience, also generate a file with the windows, labels and
     # matrices from all combined runs
 
-    # Helper functions to concatenate piles of images, or stack individual images
+    # Helper function to concatenate piles of images
     conc = lambda base: np.concatenate(
         [np.load(base.format(i)) for i in range(nruns)]
     )
-    stack = lambda base: np.dstack(
-        [np.load(base.format(i)) for i in range(nruns)]
-    ).transpose(2, 0, 1)
-
     feats = conc(join(outdir, "RUN_{}", "x.npy"))
     labs = conc(join(outdir, "RUN_{}", "y.npy"))
+    np.save(join(outdir, "x.npy"), feats)
+    np.save(join(outdir, "y.npy"), labs)
+
+    # Helper function to pad individual images to the same size and stack them
+    # NOTE: Padding is required because we introduced deletions.
+    breakpoint()
+    stack = lambda base: np.dstack(
+        [iu.pad_matrix(np.load(base.format(i)), slice_bins) for i in range(nruns)]
+    ).transpose(2, 0, 1)
+
     oris = stack(join(outdir, "RUN_{}", "truth.npy"))
     mods = stack(join(outdir, "RUN_{}", "scrambled.npy"))
     np.save(join(outdir, "truth.npy"), oris)
     np.save(join(outdir, "scrambled.npy"), mods)
-    np.save(join(outdir, "x.npy"), feats)
-    np.save(join(outdir, "y.npy"), labs)
 
 
 if __name__ == "__main__":
