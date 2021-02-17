@@ -4,8 +4,7 @@
 
 * [x] Boilerplate for editing genomes and generating matrices.
 * [x] Storing SV positions and windows.
-* [ ] Implementing all SV types (only inversions for now)
-* [ ] Synthetic reads generation.
+* [ ] Implementing all SV types (only inversions and deletions for now)
 
 This repo contains a program to generate scrambled Hi-C maps. The program starts from an input genome and Hi-C library (reads) and introduces structural variants into the genome. Structural variants (SV) are large scale alteration to the sequence including:
 
