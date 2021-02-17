@@ -1,7 +1,8 @@
 # Script used to generate training data for the model
 # Datasets generated consist of an NxWxW array of features and an N array
 # of labels
-import genome_utils as iu
+import input_utils as iu
+import genome_utils as gu
 import os
 from os.path import join
 import cooler
@@ -79,7 +80,7 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         # Subset genome: Pick a random chromosome and slice to generate a matrix of 1000 x 1000
         os.makedirs(rundir, exist_ok=True)
         sub_fasta = join(rundir, "genome.fa")
-        slice_region = iu.slice_genome(
+        slice_region = gu.slice_genome(
             fasta, sub_fasta, slice_size=slice_bins * binsize
         )
 
@@ -90,7 +91,7 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         np.save(join(rundir, "truth.npy"), mat_ori)
 
         # Generate random structural variations and apply them to the genome
-        mixer = iu.GenomeMixer(sub_fasta, CONFIG_PATH, "Debug")
+        mixer = gu.GenomeMixer(sub_fasta, CONFIG_PATH, "Debug")
         mixer.generate_sv()
         mod_genome = join(rundir, "mod_genome.fa")
         mixer.edit_genome(mod_genome)
@@ -109,8 +110,8 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         )
         # Extract window around each SV and as many random windows
         clr_mod = cooler.Cooler(join(rundir, "scrambled.cool"))
-        breakpoints, labels = iu.pos_to_coord(clr_mod, mixer.sv)
-        X, Y = iu.subset_mat(
+        breakpoints, labels = gu.pos_to_coord(clr_mod, mixer.sv)
+        X, Y = gu.subset_mat(
             clr_mod, breakpoints, labels, win_size=128, prop_negative=0.5
         )
         # Save whole slice map (after SV)
@@ -123,7 +124,7 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         np.save(join(rundir, "x.npy"), X)
         np.save(join(rundir, "y.npy"), Y)
         # Save list of SVs coordinates
-        iu.save_sv(mixer.sv, clr_mod, join(rundir, "breakpoints.tsv"))
+        gu.save_sv(mixer.sv, clr_mod, join(rundir, "breakpoints.tsv"))
 
     # For convenience, also generate a file with the windows, labels and
     # matrices from all combined runs
@@ -139,9 +140,11 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
 
     # Helper function to pad individual images to the same size and stack them
     # NOTE: Padding is required because we introduced deletions.
-    breakpoint()
     stack = lambda base: np.dstack(
-        [iu.pad_matrix(np.load(base.format(i)), slice_bins) for i in range(nruns)]
+        [
+            iu.pad_matrix(np.load(base.format(i)), slice_bins + 1)
+            for i in range(nruns)
+        ]
     ).transpose(2, 0, 1)
 
     oris = stack(join(outdir, "RUN_{}", "truth.npy"))

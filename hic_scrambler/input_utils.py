@@ -26,8 +26,8 @@ def matrix_diag_chunks(matrix, size=128, stride=1):
     chunk : np.ndarray of floats
         Square tile on the diagonal.
 
-    Example
-    -------
+    Examples
+    --------
     >>> arr = np.array([[1, 0, 0], [0, 2, 0], [0, 0, 3]])
     >>> for i in matrix_diag_chunks(arr, size=2, stride=1): print(i,'\n')
     [[1 0]
@@ -72,8 +72,8 @@ def matrix_tiles(matrix, size=128, stride=1):
     tuple of (int, int, np.ndarray of floats)
         The x, y coordinates of each tile and its content.
     
-    Example
-    -------
+    Examples
+    --------
     >>> arr = np.array([[1, 0, 0], [0, 2, 0], [0, 0, 3]])
     >>> for i in matrix_tiles(arr, size=2, stride=1):
     >>>    print(i)
@@ -171,9 +171,9 @@ def parse_ucsc_region(ucsc):
     tuple of (str, int, int) :
         The individual values extracted from the UCSC string.
     
-    Example
-    -------
-    >>>parse_ucsc_region('chrX:10312-31231')
+    Examples
+    --------
+    >>> parse_ucsc_region('chrX:10312-31231')
     ('chrX', 10312, 31231)
     """
     try:
@@ -201,8 +201,8 @@ def pad_matrix(mat, target_dim):
     mat : np.ndarray of floats
         The padded matrix of dimension target_dim x target_dim.
     
-    Example
-    -------
+    Examples
+    --------
     >>> arr = np.array([[1, 2], [3, 4]])
     >>> pad_matrix(arr, 3)
     array([[1., 2., 0.],
@@ -211,6 +211,6 @@ def pad_matrix(mat, target_dim):
     """
 
     padded = np.zeros((target_dim, target_dim), dtype=float)
-    padded[:mat.shape[0], :mat.shape[1]] = mat
+    padded[: mat.shape[0], : mat.shape[1]] = mat
 
     return padded
