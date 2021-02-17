@@ -8,6 +8,7 @@ import cooler
 from Bio import SeqIO, Seq
 from hicstuff import view as hcv
 import json
+from typing import Optional, Tuple
 
 
 class GenomeMixer(object):
@@ -40,14 +41,19 @@ class GenomeMixer(object):
 
     """
 
-    def __init__(self, genome_path, config_path, config_profile=None):
+    def __init__(
+        self,
+        genome_path: str,
+        config_path: str,
+        config_profile: Optional[str] = None,
+    ):
         self.config_path = config_path
         self.config = self.load_profile(profile=config_profile)
         self.genome_path = genome_path
         self.chromsizes = self.load_chromsizes(self.genome_path)
         self.sv = None
 
-    def load_profile(self, profile=None):
+    def load_profile(self, profile: Optional[str] = None):
         """
         Load SV profile from a JSON config file. The top level JSON object is a
         profile. A config file can have multiple profiles, but only one will be
@@ -80,7 +86,7 @@ class GenomeMixer(object):
         return config[profile]
 
     @staticmethod
-    def load_chromsizes(path):
+    def load_chromsizes(path: str) -> dict:
         """
         Loads a fasta file and returns a chromsizes dict.
 
@@ -99,7 +105,7 @@ class GenomeMixer(object):
         records = SeqIO.parse(path, format="fasta")
         return {rec.id: len(str(rec.seq)) for rec in records}
 
-    def generate_sv(self):
+    def generate_sv(self) -> pd.DataFrame:
         """
         Generates random structural variations, based on the parameters loaded
         from the instance's config file.
@@ -152,7 +158,7 @@ class GenomeMixer(object):
         out_sv = out_sv.sample(frac=1).reset_index(drop=True)
         self.sv = out_sv
 
-    def edit_genome(self, fasta_out):
+    def edit_genome(self, fasta_out: str):
         """
         Given a fasta file and a dataframe of structural variants and their
         positions, generate a new genome by applying the input changes.
@@ -224,7 +230,7 @@ class GenomeMixer(object):
                 SeqIO.write(rec, fa_out, format="fasta")
 
 
-def save_sv(sv_df, clr, path):
+def save_sv(sv_df: pd.DatatFrame, clr: cooler.Cooler, path: str):
     """
     Saves the structural variant (SV) table into a text file.
     The order of SVs in that table matches the order in which they were
@@ -241,7 +247,9 @@ def save_sv(sv_df, clr, path):
     full_sv.to_csv(path, sep="\t", index=False)
 
 
-def pos_to_coord(clr, sv_df):
+def pos_to_coord(
+    clr: cooler.Cooler, sv_df: pd.DataFrame
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Converts start - end genomic positions from structural variations to breakpoints
     in matrix coordinates.
@@ -256,10 +264,10 @@ def pos_to_coord(clr, sv_df):
 
     Returns
     -------
-    breakpoints : numpy.array of int
+    breakpoints : numpy.ndarray of int
         A N x 2 numpy array of numeric values representing X, Y coordinates of structural
         variations breakpoints in the matrix.
-    labels : numpy.array of str
+    labels : numpy.ndarray of str
         An N X 1 array of labels corresponding to SV type.
     """
     # Get coordinates to match binning
@@ -287,7 +295,13 @@ def pos_to_coord(clr, sv_df):
     return breakpoints, labels
 
 
-def subset_mat(clr, coords, labels, win_size, prop_negative=0.5):
+def subset_mat(
+    clr: cooler.Cooler,
+    coords: np.ndarray,
+    labels: np.ndarray,
+    win_size: int,
+    prop_negative: float = 0.5,
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Samples evenly sized windows from a matrix. Windows are centered around
     input coordinates. Windows and their associated labels are returned. A number
@@ -315,7 +329,7 @@ def subset_mat(clr, coords, labels, win_size, prop_negative=0.5):
     x : numpy.ndarray of floats
         The 3D feature vector to use as input in a keras model.
         Dimensions are [N, win_size, win_size].
-    y : numpy.array of ints
+    y : numpy.ndarray of ints
         The 1D label vector of N values to use as prediction in a keras model.
     """
     h, w = clr.shape
@@ -374,7 +388,7 @@ def subset_mat(clr, coords, labels, win_size, prop_negative=0.5):
     return x, y
 
 
-def slice_genome(path, out_path, slice_size=1000):
+def slice_genome(path: str, out_path: str, slice_size: int = 1000) -> str:
     """
     Given an input fasta file, slice a random region of a random chromosome and
     save it into a new fasta file.

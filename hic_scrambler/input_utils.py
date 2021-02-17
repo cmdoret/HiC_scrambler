@@ -5,9 +5,12 @@ cmdoret, 202102010
 
 import numpy as np
 import pysam as ps
+from typing import Tuple, Generator
 
 
-def matrix_diag_chunks(matrix, size=128, stride=1):
+def matrix_diag_chunks(
+    matrix: np.ndarray, size: int = 128, stride: int = 1
+) -> Generator[np.ndarray]:
     """
     Given an input matrix, yield a generator of chunks along the diagonal.
     Only compatible with symmetric matrices.
@@ -23,7 +26,7 @@ def matrix_diag_chunks(matrix, size=128, stride=1):
 
     Yields
     ------
-    chunk : np.ndarray of floats
+    chunk : numpy.ndarray of floats
         Square tile on the diagonal.
 
     Examples
@@ -53,14 +56,16 @@ def matrix_diag_chunks(matrix, size=128, stride=1):
         yield chunk
 
 
-def matrix_tiles(matrix, size=128, stride=1):
+def matrix_tiles(
+    matrix: np.ndarray, size: int = 128, stride: int = 1
+) -> Generator[Tuple[int, int, np.ndarray]]:
     """
     Chunk matrix into a grid of overlapping tiles and yield. Yield tiles and
     their coordinates. Works on asymmetric matrices.
 
     Parameters
     ----------
-    matrix : np.ndarray of floats
+    matrix : numpy.ndarray of floats
         Hi-C matrix to tile.
     size : int
         Size of the side for the square tiles to generate.
@@ -69,7 +74,7 @@ def matrix_tiles(matrix, size=128, stride=1):
 
     Yields
     ------
-    tuple of (int, int, np.ndarray of floats)
+    tuple of (int, int, numpy.ndarray of floats)
         The x, y coordinates of each tile and its content.
     
     Examples
@@ -97,7 +102,7 @@ def matrix_tiles(matrix, size=128, stride=1):
             yield i, j, chunk
 
 
-def bam_region_coverage(file, region):
+def bam_region_coverage(file: str, region: str) -> np.ndarray:
     """Retrieves the basepair-level coverage track for a BAM region.
 
     Parameters
@@ -123,7 +128,9 @@ def bam_region_coverage(file, region):
     return cov_arr
 
 
-def bam_region_read_ends(file, region, side="both"):
+def bam_region_read_ends(
+    file: str, region: str, side: str = "both"
+) -> np.ndarray:
     """Retrieves the number of read ends at each position for a BAM region.
 
     Parameters
@@ -158,7 +165,7 @@ def bam_region_read_ends(file, region, side="both"):
         return start_arr + end_arr
 
 
-def parse_ucsc_region(ucsc):
+def parse_ucsc_region(ucsc: str) -> Tuple[str, int, int]:
     """Parse a UCSC-formatted region string into a triplet (chrom, start, end).
 
     Parameters
@@ -185,20 +192,20 @@ def parse_ucsc_region(ucsc):
     return chrom, start, end
 
 
-def pad_matrix(mat, target_dim):
+def pad_matrix(mat: np.ndarray, target_dim: int) -> np.ndarray:
     """
     Adds 0 padding on the right and bottom side of the input matrix to match
     target dimensions.
 
     Parameters
     ----------
-    mat : np.ndarray of floats
+    mat : numpy.ndarray of floats
         The input square matrix on which to add right and bottom zero padding.
     target_dim : int
         The size of the output (square) padded matrix.
     Returns
     -------
-    mat : np.ndarray of floats
+    mat : numpy.ndarray of floats
         The padded matrix of dimension target_dim x target_dim.
     
     Examples
