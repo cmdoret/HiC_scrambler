@@ -4,7 +4,9 @@
 
 * [x] Boilerplate for editing genomes and generating matrices.
 * [x] Storing SV positions and windows.
+* [X] Storing pairs of whole maps before and after scrambling
 * [ ] Implementing all SV types (only inversions and deletions for now)
+* [ ] Generating features from [BAM](https://samtools.github.io/hts-specs/SAMv1.pdf) alignments
 
 This repo contains a program to generate scrambled Hi-C maps. The program starts from an input genome and Hi-C library (reads) and introduces structural variants into the genome. Structural variants (SV) are large scale alteration to the sequence including:
 
@@ -20,20 +22,20 @@ The simplest approach to generating scrambled maps would be to directly reorder 
 
 ## Usage
 
-The pipeline requires a genome (fasta format) and an optional Hi-C library (fastq format). If no library is supplied, a synthetic library will be generated from the genome to generate a matrix with a simple gradient without particular 3D structure.
+The pipeline requires a genome (fasta format) and a Hi-C library (fastq format). 
 
 A json configuration file is provided to define profiles. These profiles dictate the type of SV to generate and their properties (size, frequency, ...).
 
 ## Output
 
 The pipeline will generate an output directory containing multiple files.
-Each run will have its own subdirectory containing the cool file of the scrambled map and the list of SV applied.
+Each run will run on a random subset of the input genome. It will have its own subdirectory containing the matrix before and after scrambling, as well as the list of SV applied and zoom on the concerned regions.
 
-The root output directory will contain 2 files combining all runs:
-* The features: A 3D numpy array (npy) file containing windows around each SV as well as windows around random positions without SV (50/50).
-* The labels: A 1D numpy array containing labels corresponding to the windows with the following encoding: 0=no SV, 1=INV, 2=DEL, 3=INS
-
-file in cool format for the original matrix and one cool file per scramble run. For each scramble run, it will generate a matching text file containing the list of structural variants.
+The root output directory will contain the following files combining all runs:
+* `x.npy`: A 3D numpy array (npy) file containing windows around each SV as well as windows around random positions without SV (50/50).
+* `y.npy`: A 1D numpy array containing labels corresponding to the windows with the following encoding: 0=no SV, 1=INV, 2=DEL, 3=INS.
+* `truth.npy`: A 3D numpy array containing the matrix of each run's random region before scrambling.
+* `scrambled.npy`: Same, but after scrambling. Each map is added a bottom and right 0-padding to retain the same dimensions despite deletions.
 
 ## Test dataset
 
