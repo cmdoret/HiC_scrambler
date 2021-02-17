@@ -5,12 +5,12 @@ cmdoret, 202102010
 
 import numpy as np
 import pysam as ps
-from typing import Tuple, Generator
+from typing import Tuple, Iterator
 
 
 def matrix_diag_chunks(
     matrix: np.ndarray, size: int = 128, stride: int = 1
-) -> Generator[np.ndarray]:
+) -> Iterator[np.ndarray]:
     """
     Given an input matrix, yield a generator of chunks along the diagonal.
     Only compatible with symmetric matrices.
@@ -58,7 +58,7 @@ def matrix_diag_chunks(
 
 def matrix_tiles(
     matrix: np.ndarray, size: int = 128, stride: int = 1
-) -> Generator[Tuple[int, int, np.ndarray]]:
+) -> Iterator[Tuple[int, int, np.ndarray]]:
     """
     Chunk matrix into a grid of overlapping tiles and yield. Yield tiles and
     their coordinates. Works on asymmetric matrices.

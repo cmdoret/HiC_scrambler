@@ -3,17 +3,18 @@
 
 import matplotlib.pyplot as plt
 import tensorflow as tf
-from sklearn.model_selection import StratifiedKFold
 from tensorflow.keras.models import Model
 from keras.models import model_from_json
-from keras.utils.vis_utils import plot_model
 import glob
 import re
 from os.path import join
 import numpy as np
+from typing import Tuple
 
 
-def load_data(training_path="data/input/training"):
+def load_data(
+    training_path: str = "data/input/training",
+) -> Tuple[np.ndarray, np.ndarray]:
     """Loads training data from several runs, condatenates and normalize it."""
     # Take all sets in training folder
     x_data = np.sort(
@@ -45,7 +46,7 @@ def load_data(training_path="data/input/training"):
     return x_data, y_data
 
 
-def erase_diags(imgs):
+def erase_diags(imgs: np.ndarray) -> np.ndarray:
     """
     Given a stack of N images of shape x,y of shape (N,x,y), divide each
     pixel of each image by the average of its diagonal across the whole stack
@@ -106,13 +107,13 @@ class Unscramble(Model):
             ]
         )
 
-    def call(self, x):
+    def call(self, x: np.ndarray) -> np.ndarray:
         encoded = self.encoder(x)
         decoded = self.decoder(encoded)
         return decoded
 
 
-def load_model(model_dir="data/models/example"):
+def load_model(model_dir: str = "data/models/example") -> Model:
     """Loads a trained neural network from a json file"""
     with open(join(model_dir, "model.json"), "r") as json_file:
         loaded_model_json = json_file.read()
@@ -126,7 +127,7 @@ def load_model(model_dir="data/models/example"):
     return loaded_model
 
 
-def save_model(model, model_dir):
+def save_model(model: Model, model_dir: str):
     """Saves model configuration and weights to disk."""
     model_json = model.to_json()
     with open(join(model_dir, "model.json"), "w") as json_file:
@@ -134,7 +135,13 @@ def save_model(model, model_dir):
     model.save_weights(join(model_dir, "weights.h5"))
 
 
-def train_and_evaluate_model(model, x_train, y_train, x_test, y_test):
+def train_and_evaluate_model(
+    model: Model,
+    x_train: np.ndarray,
+    y_train: np.ndarray,
+    x_test: np.ndarray,
+    y_test: np.ndarray,
+) -> float:
     model.fit(x_train, y_train, epochs=15)
     validation_results = model.evaluate(x_test, y_test)
     return validation_results
