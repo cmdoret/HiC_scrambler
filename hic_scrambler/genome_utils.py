@@ -230,7 +230,7 @@ class GenomeMixer(object):
                 SeqIO.write(rec, fa_out, format="fasta")
 
 
-def save_sv(sv_df: pd.DatatFrame, clr: cooler.Cooler, path: str):
+def save_sv(sv_df: pd.DataFrame, clr: cooler.Cooler, path: str):
     """
     Saves the structural variant (SV) table into a text file.
     The order of SVs in that table matches the order in which they were
