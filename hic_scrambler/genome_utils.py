@@ -411,9 +411,9 @@ def slice_genome(path: str, out_path: str, slice_size: int = 1000) -> str:
     # Generate a mapping of all chromosome names and their sizes
     chrom_sizes = GenomeMixer.load_chromsizes(path)
     # Exclude chromosomes smaller than slice_size
-    for chrom, size in chrom_sizes.items():
-        if size < slice_size:
-            del chrom_sizes[chrom]
+    rm_chroms = [ch for ch, size in chrom_sizes.items() if size < slice_size]
+    for chrom in rm_chroms:
+        del chrom_sizes[chrom]
 
     # Get list of valid chromosomes
     chrom_names = list(chrom_sizes.keys())
