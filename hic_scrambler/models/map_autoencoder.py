@@ -6,9 +6,11 @@ import tensorflow as tf
 from tensorflow.keras.models import Model
 from keras.models import model_from_json
 from tensorflow.keras.layers import (
+    BatchNormalization,
     Conv2D,
     Conv2DTranspose,
     Dense,
+    Dropout,
     Flatten,
     Input,
     MaxPool2D,
@@ -39,7 +41,8 @@ def load_data(
         y_data = y_data[:, :-1, :-1]
     # Flatten Hi-C images: Divide each image by a diagonal gradient
     # computed across whole dataset
-    # x_data = erase_diags(x_data)
+    x_data = erase_diags(x_data)
+    y_data = erase_diags(y_data)
     # X must be 4D (for convolutional layers) and made up of floats
     x_data = x_data[:, :, :, None].astype(float)
     y_data = y_data[:, :, :, None].astype(float)
@@ -71,39 +74,63 @@ def erase_diags(imgs: np.ndarray) -> np.ndarray:
 class Unscramble(Model):
     """Autoencoder to generate correct maps from scrambled maps (i.e. with SV)"""
 
-    def __init__(self, img_size=256):
+    def __init__(self, img_size=256, latent_dim=2048):
         super(Unscramble, self).__init__()
-        conv_args = {"kernel_size": 3, "activation": "relu", "padding": "same"}
-        tconv_args = {
-            "kernel_size": 3,
-            "strides": 2,
-            "activation": "relu",
-            "padding": "same",
-        }
-        self.encoder = tf.keras.Sequential(
-            [
-                Input(shape=(img_size, img_size, 1)),
-                Conv2D(16, **conv_args),
-                MaxPool2D((2, 2)),
-                Conv2D(8, **conv_args),
-                MaxPool2D((2, 2)),
-                Conv2D(4, **conv_args),
-                MaxPool2D((2, 2)),
-                Flatten(),
-                Dense(img_size//8 * img_size//8 * 4)
-            ]
-        )
+        # Can change these to improve results, but the model can become too heavy
+        channels = 32
+        n_layers = 4
 
-        self.decoder = tf.keras.Sequential(
-            [   Dense(img_size//8 * img_size//8 * 4),
-                Reshape((img_size//8, img_size//8, 4)),
-                Conv2DTranspose(4, **tconv_args),
-                Conv2DTranspose(8, **tconv_args),
-                Conv2DTranspose(16, **tconv_args),
+        # Build downsampling layers iteratively
+        self.encoder = tf.keras.Sequential([
+            Input(shape=(img_size, img_size, 1)),
+        ])
+        for i in range(n_layers):
+            self.encoder.add(
                 Conv2D(
-                    1, kernel_size=1, activation="sigmoid", padding="same",
-                ),
-            ]
+                    channels,
+                    kernel_size=3,
+                    strides=2,
+                    activation='relu',
+                    padding='same'
+                )
+            )
+            self.encoder.add(
+                BatchNormalization()
+            )
+            channels *= 2
+
+        # Bottleneck with a couple dense layers 
+        self.encoder.add(Flatten())
+        self.encoder.add(Dense(latent_dim))
+
+        self.decoder = tf.keras.Sequential([   
+            Input(shape=(latent_dim,))
+        ])
+
+        # Compute dimension of the image after the last downsampling layer
+        conv_dim = (
+            img_size // (2**n_layers),
+            img_size // (2**n_layers),
+            channels
+        )
+        self.decoder.add(Dense(conv_dim[0] * conv_dim[1] * conv_dim[2]))
+        self.decoder.add(Reshape(conv_dim))
+
+        # Build upsampling layers iteratively
+        for i in range(n_layers):
+            self.decoder.add(
+                Conv2DTranspose(
+                    channels,
+                    kernel_size=3,
+                    strides=2,
+                    activation='relu',
+                    padding='same'
+                )
+            )
+            channels /= 2
+
+        self.decoder.add(
+            Conv2D(1, kernel_size=1, activation="relu", padding="same")
         )
 
     def call(self, x: np.ndarray) -> np.ndarray:
@@ -112,38 +139,6 @@ class Unscramble(Model):
         return decoded
 
 
-def load_model(model_dir: str = "data/models/example") -> Model:
-    """Loads a trained neural network from a json file"""
-    with open(join(model_dir, "model.json"), "r") as json_file:
-        loaded_model_json = json_file.read()
-    loaded_model = model_from_json(loaded_model_json)
-    loaded_model.load_weights(join(model_dir, "weights.h5"))
-    loaded_model.compile(
-        loss="sparse_categorical_crossentropy",
-        metrics=["accuracy"],
-        optimizer="adam",
-    )
-    return loaded_model
-
-
-def save_model(model: Model, model_dir: str):
-    """Saves model configuration and weights to disk."""
-    model_json = model.to_json()
-    with open(join(model_dir, "model.json"), "w") as json_file:
-        json_file.write(model_json)
-    model.save_weights(join(model_dir, "weights.h5"))
-
-
-def train_and_evaluate_model(
-    model: Model,
-    x_train: np.ndarray,
-    y_train: np.ndarray,
-    x_test: np.ndarray,
-    y_test: np.ndarray,
-) -> float:
-    model.fit(x_train, y_train, epochs=15)
-    validation_results = model.evaluate(x_test, y_test)
-    return validation_results
 
 
 if __name__ == "__main__":
@@ -152,23 +147,20 @@ if __name__ == "__main__":
     x_data, y_data = load_data()
     x_data = x_data[:, :256, :256, :]
     y_data = y_data[:, :256, :256, :]
-    (x_data, _), (_, _) = tf.keras.datasets.cifar10.load_data()
-    x_data = x_data.sum(axis=3)[:, :, :, None]
-    y_data = x_data + np.random.random((x_data.shape))
+    big = max(np.max(x_data), np.max(y_data))
+    x_data = x_data / big
+    y_data = y_data / big
+    #(y_data, _), (_, _) = tf.keras.datasets.cifar10.load_data()
+    #y_data = y_data.mean(axis=3)[:, :, :, None] / 255
+    #x_data = y_data + np.random.random(y_data.shape) / 3
     img_size = x_data.shape[1]
-    # test_idx = np.random.choice(range(x_data.shape[0]), size=x_data // 5)
-    # test_mask, train_mask = np.zeros(x_data.shape[0]), np.ones(x_data.shape[0])
-    # test_mask[test_idx] = 1
-    # train_mask[test_idx] = 0
-    tf.keras.datasets.cifar10.load_data()
-
     autoencoder = Unscramble(img_size=img_size)
-    autoencoder.compile(optimizer="sgd", loss=tf.losses.MeanSquaredError())
+    autoencoder.compile(optimizer="adam", loss=tf.losses.MeanSquaredError())
     print(
         f'{"-"*10}\nTraining model on {x_data.shape[0]} images of shape {x_data.shape[1]}x{x_data.shape[2]}'
     )
     autoencoder.fit(
-        x_data, y_data, epochs=10, shuffle=True, validation_split=0.2
+        x_data, y_data, epochs=4, shuffle=True, validation_split=0.2
     )
     print(autoencoder.encoder.summary())
     demo_sample = np.random.choice(range(x_data.shape[0]), size=5)
@@ -179,9 +171,9 @@ if __name__ == "__main__":
     # Visualize inputs and outputs
     fig, ax = plt.subplots(5, 3, sharex=True, sharey=True)
     for i in range(ax.shape[0]):
-        ax[i, 0].imshow(np.log1p(encoded_imgs[i, :, :]))
-        ax[i, 1].imshow(np.log1p(decoded_imgs[i, :, :]))
-        ax[i, 2].imshow(np.log1p(truth_imgs[i, :, :]))
+        ax[i, 0].imshow(np.log1p(encoded_imgs[i, :, :, 0]))
+        ax[i, 1].imshow(np.log1p(decoded_imgs[i, :, :, 0]))
+        ax[i, 2].imshow(np.log1p(truth_imgs[i, :, :, 0]))
     plt.suptitle("Random examples of input and decoded samples")
     ax[0, 0].set_title("Input")
     ax[0, 1].set_title("Decoded")
