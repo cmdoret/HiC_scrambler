@@ -1,4 +1,5 @@
 # Implementing an autoencoder to reconstruct chromosome contact maps from a scrambled version.
+# Note: It doesn't work at all for unscrambling
 # cmdoret, 20210209
 
 import matplotlib.pyplot as plt
@@ -10,28 +11,42 @@ from tensorflow.keras.layers import (
     Conv2D,
     Conv2DTranspose,
     Dense,
-    Dropout,
     Flatten,
     Input,
-    MaxPool2D,
     Reshape,
 )
 import glob
 import re
 from os.path import join
 import numpy as np
-from typing import Tuple
+from typing import Tuple, Iterable
 
 
 def load_data(
-    training_path: str = "data/input/training_aa", chunk=0,
+    training_path: str = "data/input/training_aa",
+    chunks: Iterable[int] = [0],
+    crop_to: int = 32,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Loads training data from several runs, condatenates and normalize it."""
     # Take all sets in training folder
 
     # Concatenate them into a single array
-    x_data = np.load(join(training_path, f"scrambled_chunk_{chunk}.npy"))
-    y_data = np.load(join(training_path, f"truth_chunk_{chunk}.npy"))
+    x_data = np.vstack(
+        [
+            np.load(join(training_path, f"scrambled_chunk_{chunk}.npy"))[
+                :, :crop_to, :crop_to
+            ]
+            for chunk in chunks
+        ]
+    )
+    y_data = np.vstack(
+        [
+            np.load(join(training_path, f"scrambled_chunk_{chunk}.npy"))[
+                :, :crop_to, :crop_to
+            ]
+            for chunk in chunks
+        ]
+    )
     if x_data.shape != y_data.shape:
         raise ValueError("Input and output images should have the same shape.")
 
@@ -74,44 +89,37 @@ def erase_diags(imgs: np.ndarray) -> np.ndarray:
 class Unscramble(Model):
     """Autoencoder to generate correct maps from scrambled maps (i.e. with SV)"""
 
-    def __init__(self, img_size=256, latent_dim=2048):
+    def __init__(self, img_size=256, latent_dim=1024, n_layers=5, channels=32):
         super(Unscramble, self).__init__()
-        # Can change these to improve results, but the model can become too heavy
-        channels = 32
-        n_layers = 4
 
         # Build downsampling layers iteratively
-        self.encoder = tf.keras.Sequential([
-            Input(shape=(img_size, img_size, 1)),
-        ])
+        self.encoder = tf.keras.Sequential(
+            [Input(shape=(img_size, img_size, 1)),]
+        )
         for i in range(n_layers):
             self.encoder.add(
                 Conv2D(
                     channels,
                     kernel_size=3,
                     strides=2,
-                    activation='relu',
-                    padding='same'
+                    activation="relu",
+                    padding="same",
                 )
             )
-            self.encoder.add(
-                BatchNormalization()
-            )
+            self.encoder.add(BatchNormalization())
             channels *= 2
 
-        # Bottleneck with a couple dense layers 
+        # Bottleneck with a couple dense layers
         self.encoder.add(Flatten())
         self.encoder.add(Dense(latent_dim))
 
-        self.decoder = tf.keras.Sequential([   
-            Input(shape=(latent_dim,))
-        ])
+        self.decoder = tf.keras.Sequential([Input(shape=(latent_dim,))])
 
         # Compute dimension of the image after the last downsampling layer
         conv_dim = (
-            img_size // (2**n_layers),
-            img_size // (2**n_layers),
-            channels
+            img_size // (2 ** n_layers),
+            img_size // (2 ** n_layers),
+            channels,
         )
         self.decoder.add(Dense(conv_dim[0] * conv_dim[1] * conv_dim[2]))
         self.decoder.add(Reshape(conv_dim))
@@ -123,8 +131,8 @@ class Unscramble(Model):
                     channels,
                     kernel_size=3,
                     strides=2,
-                    activation='relu',
-                    padding='same'
+                    activation="relu",
+                    padding="same",
                 )
             )
             channels /= 2
@@ -132,6 +140,7 @@ class Unscramble(Model):
         self.decoder.add(
             Conv2D(1, kernel_size=1, activation="relu", padding="same")
         )
+        self.encoder.add(BatchNormalization())
 
     def call(self, x: np.ndarray) -> np.ndarray:
         encoded = self.encoder(x)
@@ -139,28 +148,31 @@ class Unscramble(Model):
         return decoded
 
 
-
-
 if __name__ == "__main__":
     # Exploration, parameter search, validation etc
     n_folds = 5
-    x_data, y_data = load_data()
-    x_data = x_data[:, :256, :256, :]
-    y_data = y_data[:, :256, :256, :]
-    big = max(np.max(x_data), np.max(y_data))
-    x_data = x_data / big
-    y_data = y_data / big
-    #(y_data, _), (_, _) = tf.keras.datasets.cifar10.load_data()
-    #y_data = y_data.mean(axis=3)[:, :, :, None] / 255
-    #x_data = y_data + np.random.random(y_data.shape) / 3
+    x_data, y_data = load_data(chunks=[0, 1, 2, 3], crop_to=128)
+    x_data, y_data = np.log1p(x_data), np.log1p(y_data)
+    # x_data = x_data[:, :32, :32, :]
+    # y_data = y_data[:, :32, :32, :]
+    scale_mean, scale_std = x_data.mean(), x_data.std()
+    x_data = (x_data - scale_mean) / scale_std
+    y_data = (y_data - scale_mean) / scale_std
+    # y_data = x_data.copy()
+    # y_data[:, 16:, :, :] = y_data[:, 16:, ::-1, :]
+    # (y_data, _), (_, _) = tf.keras.datasets.cifar10.load_data()
+    # y_data = y_data.mean(axis=3)[:, :, :, None] / 255
+    # x_data = y_data + np.random.random(y_data.shape) / 3
     img_size = x_data.shape[1]
-    autoencoder = Unscramble(img_size=img_size)
+    autoencoder = Unscramble(
+        img_size=img_size, latent_dim=1024, n_layers=3, channels=16
+    )
     autoencoder.compile(optimizer="adam", loss=tf.losses.MeanSquaredError())
     print(
         f'{"-"*10}\nTraining model on {x_data.shape[0]} images of shape {x_data.shape[1]}x{x_data.shape[2]}'
     )
     autoencoder.fit(
-        x_data, y_data, epochs=4, shuffle=True, validation_split=0.2
+        x_data, y_data, epochs=100, shuffle=True, validation_split=0.2
     )
     print(autoencoder.encoder.summary())
     demo_sample = np.random.choice(range(x_data.shape[0]), size=5)
@@ -171,9 +183,9 @@ if __name__ == "__main__":
     # Visualize inputs and outputs
     fig, ax = plt.subplots(5, 3, sharex=True, sharey=True)
     for i in range(ax.shape[0]):
-        ax[i, 0].imshow(np.log1p(encoded_imgs[i, :, :, 0]))
-        ax[i, 1].imshow(np.log1p(decoded_imgs[i, :, :, 0]))
-        ax[i, 2].imshow(np.log1p(truth_imgs[i, :, :, 0]))
+        ax[i, 0].imshow(encoded_imgs[i, :, :, 0])
+        ax[i, 1].imshow(decoded_imgs[i, :, :, 0])
+        ax[i, 2].imshow(truth_imgs[i, :, :, 0])
     plt.suptitle("Random examples of input and decoded samples")
     ax[0, 0].set_title("Input")
     ax[0, 1].set_title("Decoded")
