@@ -7,14 +7,6 @@ GENOME="./data/genome.fa"
 clean:
 	rm -rf demo_out demo_tmp
 
-# Install dependencies
-deps:
-	pip install -r requirements.txt
-
-# Make a local package from the repo
-setup: deps
-	pip install -e .
-
 test:
 	pytest
 

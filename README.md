@@ -20,6 +20,20 @@ These alterations can be happen sequentially and be superimposed on each other, 
 
 The simplest approach to generating scrambled maps would be to directly reorder rows / columns of the matrix, but this would not accurately replicate the artifacts visible in actual SV due to read alignments.
 
+# Setup
+
+To install python dependencies, you can use the requirements.txt file as follows:
+
+```bash
+pip install --user -r requirements.txt
+```
+
+To setup install the project as a local package, run:
+
+```bash
+pip install --user -e .
+```
+
 ## Usage
 
 The pipeline requires a genome (fasta format) and a Hi-C library (fastq format). 
