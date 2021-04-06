@@ -2,10 +2,18 @@ READS1="./data/for.fq.gz"
 READS2="./data/rev.fq.gz"
 GENOME="./data/genome.fa"
 
-.PHONY: clean demo test
+.PHONY: clean demo test deps setup
 
 clean:
 	rm -rf demo_out demo_tmp
+
+# Install dependencies
+deps:
+	pip install -r requirements.txt
+
+# Make a local package from the repo
+setup: deps
+	pip install -e .
 
 test:
 	pytest
