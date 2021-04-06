@@ -6,7 +6,6 @@ import numpy as np
 import pandas as pd
 import cooler
 from Bio import SeqIO, Seq
-from hicstuff import view as hcv
 import json
 from typing import Optional, Tuple
 

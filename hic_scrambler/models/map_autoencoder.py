@@ -22,8 +22,6 @@ from tensorflow.keras.layers import (
     UpSampling2D,
     ZeroPadding2D,
 )
-import glob
-import re
 from os.path import join
 import numpy as np
 from typing import Tuple, Iterable, Optional

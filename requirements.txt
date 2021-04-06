@@ -1,0 +1,14 @@
+biopython
+hicstuff
+keras
+keras
+scikit-learn
+tensorflow
+click
+cooler
+hicstuff
+matplotlib
+numpy
+pandas
+pysam
+pytest

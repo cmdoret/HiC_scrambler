@@ -1,17 +1,13 @@
 # Script used to generate training data for the model
 # Datasets generated consist of an NxWxW array of features and an N array
 # of labels
-import input_utils as iu
-import genome_utils as gu
+from hic_scrambler import input_utils as iu
+from hic_scrambler import genome_utils as gu
 import os
 from os.path import join
 import cooler
 import hicstuff.pipeline as hpi
-import hicstuff.io as hio
 import numpy as np
-import shutil as su
-import pandas as pd
-from Bio import SeqIO, Seq
 import pathlib
 import click
 
