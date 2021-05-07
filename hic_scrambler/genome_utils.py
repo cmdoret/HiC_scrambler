@@ -17,13 +17,13 @@ class GenomeMixer(object):
     name says. The SV generated in the genome will be "mirrored" in the library.
     For example, deleting a region in the genome is akin to inserting a region
     in the library.
-    
+
     Examples
     --------
         mix = GenomeMixer("genome.fasta", "config.json", "profile="Dmel")
         mix.generate_sv()
         mix.edit_genome("new_genome.fasta")
-    
+
     Attributes
     ----------
     genome_path : str
@@ -68,7 +68,7 @@ class GenomeMixer(object):
         Returns
         -------
         dict :
-            A dictionary of SV types structured like 
+            A dictionary of SV types structured like
             {"sv_type":{"property": value, ...}, ...}
         """
         config = json.load(open(self.config_path, "r"))
@@ -157,10 +157,10 @@ class GenomeMixer(object):
         out_sv = out_sv.sample(frac=1).reset_index(drop=True)
         self.sv = out_sv
 
-    def edit_genome(self, fasta_out: str):
+    def save_edited_genome(self, fasta_out: str):
         """
-        Given a fasta file and a dataframe of structural variants and their
-        positions, generate a new genome by applying the input changes.
+        Apply computed SVs to the sequence and store the edited sequence into
+        the target file in fasta format.
 
         Coordinates in self.sv are updated as the genome is modified.
 
@@ -194,37 +194,34 @@ class GenomeMixer(object):
                             self.sv.loc[starts, "start"] = (
                                 mid + mid - self.sv.start[starts]
                             )
-                            self.sv.loc[ends, "end"] = (
-                                mid + mid - self.sv.end[ends]
-                            )
+                            self.sv.loc[ends, "end"] = mid + mid - self.sv.end[ends]
                             # Make sure start is always lower than end
                             swap_mask = self.sv.start > self.sv.end
-                            self.sv.loc[
-                                swap_mask, ["start", "end"]
-                            ] = self.sv.loc[swap_mask, ["end", "start"]].values
+                            self.sv.loc[swap_mask, ["start", "end"]] = self.sv.loc[
+                                swap_mask, ["end", "start"]
+                            ].values
                     elif sv_type == "DEL":
                         if chrom == rec.id:
                             mutseq = mutseq[:start] + mutseq[end:]
                             # Shift coordinates on the right of DEL region
                             self.sv.loc[
-                                (self.sv.chrom == chrom)
-                                & (self.sv.start >= start),
+                                (self.sv.chrom == chrom) & (self.sv.start >= start),
                                 ["start", "end"],
-                            ] -= (end - start)
-                            self.sv.start[self.sv.start < 0] = 0
-                            self.sv.end[self.sv.end < 0] = 0
+                            ] -= (
+                                end - start
+                            )
+                            self.sv.loc[self.sv.start < 0, "start"] = 0
+                            self.sv.loc[self.sv.end < 0, "end"] = 0
                     else:
-                        raise NotImplementedError(
-                            "SV type not implemented yet."
-                        )
+                        raise NotImplementedError("SV type not implemented yet.")
                 self.sv.start = self.sv.start.astype(int)
                 self.sv.end = self.sv.end.astype(int)
                 # Discard SV that have been erased by others
                 self.sv = self.sv.loc[(self.sv.end - self.sv.start) > 1, :]
                 rec = SeqIO.SeqRecord(seq=mutseq, id=rec.id, description="")
                 # Trim SV with coordinates > chrom size
-                self.sv.end[
-                    (self.sv.chrom == chrom) & (self.sv.end >= len(mutseq))
+                self.sv.loc[
+                    (self.sv.chrom == chrom) & (self.sv.end >= len(mutseq)), "end"
                 ] = (len(mutseq) - 1)
                 SeqIO.write(rec, fa_out, format="fasta")
 
@@ -241,7 +238,7 @@ def save_sv(sv_df: pd.DataFrame, clr: cooler.Cooler, path: str):
     for i in range(full_sv.shape[0]):
         chrom, start, end = full_sv.loc[i, ["chrom", "start", "end"]]
         full_sv.loc[i, ["coord_start", "coord_end"]] = clr.extent(
-            f"{chrom}:{start}-{end}"
+            f"{chrom}:{min(start, end)}-{max(start, end)}"
         )
     full_sv.to_csv(path, sep="\t", index=False)
 
@@ -400,7 +397,7 @@ def slice_genome(path: str, out_path: str, slice_size: int = 1000) -> str:
         Path to the output sliced fasta file.
     slice_size : int
         Size of the region to extract, in basepairs.
-    
+
     Returns
     -------
     ucsc : str
@@ -420,9 +417,7 @@ def slice_genome(path: str, out_path: str, slice_size: int = 1000) -> str:
     # Pick a random region of slice_size bp in a random chromosome and write it
     picked_chrom = np.random.choice(chrom_names, size=1)[0]
     start_slice = int(
-        np.random.randint(
-            low=0, high=chrom_sizes[picked_chrom] - slice_size, size=1
-        )
+        np.random.randint(low=0, high=chrom_sizes[picked_chrom] - slice_size, size=1)
     )
     end_slice = int(start_slice + slice_size)
     with open(out_path, "w") as sub_handle:
