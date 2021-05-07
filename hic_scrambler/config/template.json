@@ -1,5 +1,22 @@
 {
     "Debug": {
+        "SV_freq": 0.00001,
+        "SV_types": {
+            "INV": {
+                "prop": 0.5,
+                "mean_size": 8000,
+                "sd_size": 1000,
+                "code": 1
+            },
+            "DEL": {
+                "prop": 0.5,
+                "mean_size": 8000,
+                "sd_size": 1000,
+                "code": 2
+            }
+        }
+    },
+    "Yeast": {
         "SV_freq": 0.000001,
         "SV_types": {
             "INV": {
