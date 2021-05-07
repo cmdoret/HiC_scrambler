@@ -32,13 +32,12 @@ def matrix_diag_chunks(
     Examples
     --------
     >>> arr = np.array([[1, 0, 0], [0, 2, 0], [0, 0, 3]])
-    >>> for i in matrix_diag_chunks(arr, size=2, stride=1): print(i,'\n')
+    >>> for i in matrix_diag_chunks(arr, size=2, stride=1): print(i)
     [[1 0]
-     [0 2]] 
-
+     [0 2]]
     [[2 0]
      [0 3]]
-    
+
     """
     m, n = matrix.shape
     # Sanity checks
@@ -76,16 +75,20 @@ def matrix_tiles(
     ------
     tuple of (int, int, numpy.ndarray of floats)
         The x, y coordinates of each tile and its content.
-    
+
     Examples
     --------
     >>> arr = np.array([[1, 0, 0], [0, 2, 0], [0, 0, 3]])
     >>> for i in matrix_tiles(arr, size=2, stride=1):
-    >>>    print(i)
-    (0, 0, array([[1, 0], [0, 2]]))
-    (0, 1, array([[0, 0], [2, 0]]))
-    (1, 0, array([[0, 2], [0, 0]]))
-    (1, 1, array([[2, 0], [0, 3]]))
+    ...    print(i)
+    (0, 0, array([[1, 0],
+           [0, 2]]))
+    (0, 1, array([[0, 0],
+           [2, 0]]))
+    (1, 0, array([[0, 2],
+           [0, 0]]))
+    (1, 1, array([[2, 0],
+           [0, 3]]))
     """
     m, n = matrix.shape
     # Sanity checks
@@ -111,7 +114,7 @@ def bam_region_coverage(file: str, region: str) -> np.ndarray:
         path to the sorted, indexed BAM file.
     region : str
         UCSC-formatted region string (e.g. chr1:103-410)
-    
+
     Returns
     -------
     numpy.ndarray of ints :
@@ -128,9 +131,7 @@ def bam_region_coverage(file: str, region: str) -> np.ndarray:
     return cov_arr
 
 
-def bam_region_read_ends(
-    file: str, region: str, side: str = "both"
-) -> np.ndarray:
+def bam_region_read_ends(file: str, region: str, side: str = "both") -> np.ndarray:
     """Retrieves the number of read ends at each position for a BAM region.
 
     Parameters
@@ -141,7 +142,7 @@ def bam_region_read_ends(
         UCSC-formatted region string (e.g. chr1:103-410)
     side : str
         What end of the reads to count: left, right or both.
-    
+
     Returns
     -------
     numpy.ndarray of ints :
@@ -172,12 +173,12 @@ def parse_ucsc_region(ucsc: str) -> Tuple[str, int, int]:
     ----------
     ucsc : str
         String representing a genomic region in the format chromosome:start-end.
-    
+
     Returns
     -------
     tuple of (str, int, int) :
         The individual values extracted from the UCSC string.
-    
+
     Examples
     --------
     >>> parse_ucsc_region('chrX:10312-31231')
@@ -207,7 +208,7 @@ def pad_matrix(mat: np.ndarray, target_dim: int) -> np.ndarray:
     -------
     mat : numpy.ndarray of floats
         The padded matrix of dimension target_dim x target_dim.
-    
+
     Examples
     --------
     >>> arr = np.array([[1, 2], [3, 4]])
