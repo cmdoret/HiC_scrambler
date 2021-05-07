@@ -16,10 +16,16 @@ CONFIG_PATH = join(os.path.dirname(__file__), "config", "template.json")
 
 @click.command()
 @click.option(
-    "--reads1", "-1", default=None, help="Forward Hi-C reads",
+    "--reads1",
+    "-1",
+    default=None,
+    help="Forward Hi-C reads",
 )
 @click.option(
-    "--reads2", "-2", default=None, help="Reverse Hi-C reads",
+    "--reads2",
+    "-2",
+    default=None,
+    help="Reverse Hi-C reads",
 )
 @click.option(
     "--binsize",
@@ -29,7 +35,10 @@ CONFIG_PATH = join(os.path.dirname(__file__), "config", "template.json")
     help="The resolution of matrices to generate, in basepair",
 )
 @click.option(
-    "--nruns", "-n", default=1, help="The number of scramble runs to generate",
+    "--nruns",
+    "-n",
+    default=1,
+    help="The number of scramble runs to generate",
 )
 @click.option(
     "--tmpdir",
@@ -81,16 +90,14 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         )
 
         # Save map corresponding to the slice region (before SV)
-        mat_ori = clr_ori.matrix(sparse=False, balance=False).fetch(
-            slice_region
-        )
+        mat_ori = clr_ori.matrix(sparse=False, balance=False).fetch(slice_region)
         np.save(join(rundir, "truth.npy"), mat_ori)
 
         # Generate random structural variations and apply them to the genome
         mixer = gu.GenomeMixer(sub_fasta, CONFIG_PATH, "Debug")
         mixer.generate_sv()
         mod_genome = join(rundir, "mod_genome.fa")
-        mixer.edit_genome(mod_genome)
+        mixer.save_edited_genome(mod_genome)
         # Generate contact map using the edited genome
         hpi.full_pipeline(
             mod_genome,
@@ -126,9 +133,7 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
     # matrices from all combined runs
 
     # Helper function to concatenate piles of images
-    conc = lambda base: np.concatenate(
-        [np.load(base.format(i)) for i in range(nruns)]
-    )
+    conc = lambda base: np.concatenate([np.load(base.format(i)) for i in range(nruns)])
     feats = conc(join(outdir, "RUN_{}", "x.npy"))
     labs = conc(join(outdir, "RUN_{}", "y.npy"))
     np.save(join(outdir, "x.npy"), feats)
@@ -137,10 +142,7 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
     # Helper function to pad individual images to the same size and stack them
     # NOTE: Padding is required because we introduced deletions.
     stack = lambda base: np.dstack(
-        [
-            iu.pad_matrix(np.load(base.format(i)), slice_bins + 1)
-            for i in range(nruns)
-        ]
+        [iu.pad_matrix(np.load(base.format(i)), slice_bins + 1) for i in range(nruns)]
     ).transpose(2, 0, 1)
 
     oris = stack(join(outdir, "RUN_{}", "truth.npy"))
@@ -151,4 +153,3 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
 
 if __name__ == "__main__":
     run_scrambles()  # pylint: disable=no-value-for-parameter
-
