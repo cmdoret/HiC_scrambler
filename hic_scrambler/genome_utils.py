@@ -205,7 +205,7 @@ class GenomeMixer(object):
                             mutseq = mutseq[:start] + mutseq[end:]
                             # Shift coordinates on the right of DEL region
                             self.sv.loc[
-                                (self.sv.chrom == chrom) & (self.sv.start >= start),
+                                (self.sv.chrom == chrom) & (self.sv.start > start),
                                 ["start", "end"],
                             ] -= (
                                 end - start
