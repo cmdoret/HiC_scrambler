@@ -8,6 +8,7 @@ import cooler
 from Bio import SeqIO, Seq
 import json
 from typing import Optional, Tuple
+import hic_scrambler.sv as hsv
 
 
 class GenomeMixer(object):
@@ -202,16 +203,12 @@ class GenomeMixer(object):
                             ].values
                     elif sv_type == "DEL":
                         if chrom == rec.id:
-                            mutseq = mutseq[:start] + mutseq[end:]
+                            mutseq = hsv.deletion(start, end, mutseq)
                             # Shift coordinates on the right of DEL region
-                            self.sv.loc[
-                                (self.sv.chrom == chrom) & (self.sv.start > start),
-                                ["start", "end"],
-                            ] -= (
-                                end - start
+                            self.sv.start = hsv.update_coords_del(
+                                start, end, self.sv.start
                             )
-                            self.sv.loc[self.sv.start < 0, "start"] = 0
-                            self.sv.loc[self.sv.end < 0, "end"] = 0
+                            self.sv.end = hsv.update_coords_del(start, end, self.sv.end)
                     else:
                         raise NotImplementedError("SV type not implemented yet.")
                 self.sv.start = self.sv.start.astype(int)
