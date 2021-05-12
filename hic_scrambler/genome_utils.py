@@ -122,8 +122,8 @@ class GenomeMixer(object):
         all_chroms_sv = []
         for chrom, size in self.chromsizes.items():
             n_sv = round(size * self.config["SV_freq"])
-            chrom_sv = pd.DataFrame(np.empty((n_sv, 4)))
-            chrom_sv.columns = ["sv_type", "chrom", "start", "end"]
+            chrom_sv = pd.DataFrame(np.empty((n_sv, 5)))
+            chrom_sv.columns = ["sv_type", "chrom", "start", "end","size"]
             sv_count = 0
             for sv_name, sv_char in self.config["SV_types"].items():
                 # multiply proportion of SV type by total SV freq desired to
@@ -146,7 +146,8 @@ class GenomeMixer(object):
                     )
                     # Make sure the inversion does not go beyond chromosome.
                     end = min(size, end)
-                    chrom_sv.iloc[sv_count, :] = (sv_name, chrom, start, end)
+                    
+                    chrom_sv.iloc[sv_count, :] = (sv_name, chrom, start, end, end-start)
                     sv_count += 1
             all_chroms_sv.append(chrom_sv)
         out_sv = pd.concat(all_chroms_sv, axis=0)
@@ -179,42 +180,34 @@ class GenomeMixer(object):
                     chrom, start, end = row.chrom, int(row.start), int(row.end)
                     # NOTE: Only implemented for inversions for now.
                     if sv_type == "INV":
+                       
                         # Reverse complement to generate inversion
                         if chrom == rec.id:
-                            mutseq[start:end] = Seq.reverse_complement(
-                                mutseq[start:end]
-                            )
+                            mutseq[start:end] = hsv.inversion(mutseq[start:end])
                             # Update coordinates of other SVs in the INV region
-                            mid = (end + start) // 2
-                            starts = self.sv.eval(
-                                "(chrom == @chrom) & (start >= @start) & (start <= @end)"
-                            )
-                            ends = self.sv.eval(
-                                "(chrom == @chrom) & (end >= @start) & (end <= @end)"
-                            )
-                            self.sv.loc[starts, "start"] = (
-                                mid + mid - self.sv.start[starts]
-                            )
-                            self.sv.loc[ends, "end"] = mid + mid - self.sv.end[ends]
+                            self.sv.start = hsv.update_coords_inv(start, end, self.sv.start)
+                            self.sv.end = hsv.update_coords_inv(start, end, self.sv.end)
                             # Make sure start is always lower than end
-                            swap_mask = self.sv.start > self.sv.end
-                            self.sv.loc[swap_mask, ["start", "end"]] = self.sv.loc[
-                                swap_mask, ["end", "start"]
-                            ].values
+                            self.sv.start, self.sv.end = hsv.swap(self.sv.start,self.sv.end)	     
+                            
                     elif sv_type == "DEL":
+                        
                         if chrom == rec.id:
+                                    
                             mutseq = hsv.deletion(start, end, mutseq)
                             # Shift coordinates on the right of DEL region
                             self.sv.start = hsv.update_coords_del(
                                 start, end, self.sv.start
                             )
                             self.sv.end = hsv.update_coords_del(start, end, self.sv.end)
+                            
                     else:
                         raise NotImplementedError("SV type not implemented yet.")
                 self.sv.start = self.sv.start.astype(int)
                 self.sv.end = self.sv.end.astype(int)
                 # Discard SV that have been erased by others
-                self.sv = self.sv.loc[(self.sv.end - self.sv.start) > 1, :]
+                self.sv = self.sv.loc[((self.sv.end - self.sv.start) > 1) | (self.sv.sv_type == "DEL"), :]
+                
                 rec = SeqIO.SeqRecord(seq=mutseq, id=rec.id, description="")
                 # Trim SV with coordinates > chrom size
                 self.sv.loc[
@@ -232,6 +225,7 @@ def save_sv(sv_df: pd.DataFrame, clr: cooler.Cooler, path: str):
     full_sv = sv_df.copy()
     full_sv["coord_start"] = 0
     full_sv["coord_end"] = 0
+    
     for i in range(full_sv.shape[0]):
         chrom, start, end = full_sv.loc[i, ["chrom", "start", "end"]]
         full_sv.loc[i, ["coord_start", "coord_end"]] = clr.extent(
