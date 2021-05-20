@@ -4,11 +4,15 @@ cmdoret, 20190131
 """
 import numpy as np
 import pandas as pd
+import pickle
+import glob
 import cooler
 from Bio import SeqIO, Seq
 import json
 from typing import Optional, Tuple
 import hic_scrambler.sv as hsv
+import hic_scrambler.BAM_functions as bm
+import hic_scrambler.GCpercent_functions as gcp
 
 
 class GenomeMixer(object):
@@ -179,6 +183,7 @@ class GenomeMixer(object):
                     sv_type = row.sv_type
                     chrom, start, end = row.chrom, int(row.start), int(row.end)
                     # NOTE: Only implemented for inversions for now.
+
                     if sv_type == "INV":
                        
                         # Reverse complement to generate inversion
@@ -207,7 +212,7 @@ class GenomeMixer(object):
                 self.sv.end = self.sv.end.astype(int)
                 # Discard SV that have been erased by others
                 self.sv = self.sv.loc[((self.sv.end - self.sv.start) > 1) | (self.sv.sv_type == "DEL"), :]
-                
+                self.sv.index = pd.RangeIndex(start=0, stop=len(self.sv.index), step=1)
                 rec = SeqIO.SeqRecord(seq=mutseq, id=rec.id, description="")
                 # Trim SV with coordinates > chrom size
                 self.sv.loc[
@@ -225,8 +230,9 @@ def save_sv(sv_df: pd.DataFrame, clr: cooler.Cooler, path: str):
     full_sv = sv_df.copy()
     full_sv["coord_start"] = 0
     full_sv["coord_end"] = 0
-    
+
     for i in range(full_sv.shape[0]):
+
         chrom, start, end = full_sv.loc[i, ["chrom", "start", "end"]]
         full_sv.loc[i, ["coord_start", "coord_end"]] = clr.extent(
             f"{chrom}:{min(start, end)}-{max(start, end)}"
@@ -287,8 +293,13 @@ def subset_mat(
     coords: np.ndarray,
     labels: np.ndarray,
     win_size: int,
+    binsize: int,
+    rundir : str,
+    tmpdir : str,
     prop_negative: float = 0.5,
-) -> Tuple[np.ndarray, np.ndarray]:
+    pixel_tolerance: int = 3,
+    chrom_name: str = "Sc_chr04"
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Samples evenly sized windows from a matrix. Windows are centered around
     input coordinates. Windows and their associated labels are returned. A number
@@ -306,18 +317,33 @@ def subset_mat(
     labels : numpy.ndarray of ints
     win_size : int
         Size of windows to sample from the matrix.
+    binsize: int
+        The resolution of the matrices we generate, in basepair.
+    rundir : str
+        Name of the directory where genome.fa is.
+    tmpdir : str
+        Name of the temporary directory.
     prop_negative : float
         The proportion of windows without SVs desired. If set to 0.5, when given
         a list of 23 SV, the function will output 46 observations (windows); 23
         without SV (picked randomly in the matrix) and 23 with SV.
-
+    pixel_tolerance: int
+        Pixel of tolerance when we detect an SV.
+    chrom_name: str 
+        Name of the chromosome.
     Returns
     -------
     x : numpy.ndarray of floats
-        The 3D feature vector to use as input in a keras model.
+        The 3D feature vector to use as input in a keras model to detect zones of SV.
         Dimensions are [N, win_size, win_size].
     y : numpy.ndarray of ints
-        The 1D label vector of N values to use as prediction in a keras model.
+        The 1D label vector of N values to use as prediction in a keras model to detect zones of SV.
+    percents : numpy.ndarray of floats
+        An array with the evolution of GC% for each coord.
+    starts_arr : numpy.ndarray of int
+        An array with the number of reads which start at each position near the coord.  
+    ends_arr : numpy.ndarray of int
+        An array with the number of reads which end at each position near the coord. 
     """
     h, w = clr.shape
     i_w = int(h - win_size // 2)
@@ -336,6 +362,12 @@ def subset_mat(
     n_windows = int(coords.shape[0] // (1 - prop_negative))
     x = np.zeros((n_windows, win_size, win_size), dtype=np.float64)
     y = np.zeros(n_windows, dtype=np.int64)
+    percents = np.zeros((n_windows, binsize), dtype = np.float64)
+    starts_arr = np.zeros((n_windows, binsize), dtype = np.int64)
+    ends_arr = np.zeros((n_windows, binsize), dtype = np.int64)
+    n_reads = np.zeros(n_windows, dtype = np.int64)
+    start_reads_dict = dict()
+    end_reads_dict = dict()
     if win_size >= min(h, w):
         print("Window size must be smaller than the Hi-C matrix.")
     halfw = win_size // 2
@@ -352,6 +384,36 @@ def subset_mat(
             breakpoint()
         x[i, :, :] = win
         y[i] = sv_to_int[labels[i]]
+
+        c_beg = c[0]*binsize - binsize//2
+        c_end = c[0]*binsize + binsize//2
+
+        for c_ in range(c_beg, c_end):
+            
+            seq = gcp.load_seq(rundir + "/mod_genome.fa", chrom_name,c_-binsize//2, c_ + binsize//2)
+            percents[i, c_-c_beg] = gcp.percent_GC(seq)
+
+    
+        seq = gcp.load_seq(rundir + "/mod_genome.fa", chrom_name,c_beg, c_end)
+        percent = gcp.percent_GC(seq)
+
+        region = chrom_name + ":" + str(c_beg) + "-" + str(c_end)
+        
+        start_arr, end_arr = bm.bam_region_read_ends(file = tmpdir + "/scrambled.for.bam", region = region, side  = "both")
+        start_read, end_read = bm.bam_start_end(tmpdir +"/scrambled.for.bam", region)
+
+        n_reads_i = bm.n_alignement(file = tmpdir + "/scrambled.for.bam", region = region)
+
+        start_reads_dict[i] = start_read
+        end_reads_dict[i] = end_read
+
+        percents[i,:] = percent
+        starts_arr[i,:] = start_arr
+        ends_arr[i,:] = end_arr
+
+        n_reads[i] = n_reads_i
+
+
     # Getting negative windows
     neg_coords = set()
     for i in range(coords.shape[0], n_windows):
@@ -372,7 +434,41 @@ def subset_mat(
         x[i, :, :] = win
         y[i] = 0
         x = x.astype(int)
-    return x, y
+
+        c_beg = c*binsize - binsize//2
+        c_end = c*binsize + binsize//2
+        
+        for c_ in range(c_beg, c_end):
+            
+            seq = gcp.load_seq(rundir + "/mod_genome.fa", chrom_name,c_-binsize//2, c_ + binsize//2)
+            percents[i, c_-c_beg] = gcp.percent_GC(seq)
+
+        region = chrom_name + ":" + str(c_beg) + "-" + str(c_end)
+        start_arr, end_arr = bm.bam_region_read_ends(file = tmpdir + "/scrambled.for.bam", region = region, side  = "both")
+
+        start_read, end_read = bm.bam_start_end(tmpdir + "/scrambled.for.bam", region)
+        
+        n_reads_i = bm.n_alignement(file = tmpdir + "/scrambled.for.bam", region = region)
+
+        start_reads_dict[i] = start_read
+        end_reads_dict[i] = end_read
+
+        percents[i,:] = percent
+        starts_arr[i,:] = start_arr
+        ends_arr[i,:] = end_arr
+
+        n_reads[i] = n_reads_i
+
+
+    with open(rundir +"/start_pos.pkl", "wb") as tf:
+        pickle.dump(start_reads_dict,tf)
+
+    with open(rundir +"/end_pos.pkl", "wb") as tf:
+        pickle.dump(end_reads_dict,tf)
+    
+    np.save(rundir +  "/n_read.npy", n_reads)
+
+    return x, y, percents, starts_arr, ends_arr
 
 
 def slice_genome(path: str, out_path: str, slice_size: int = 1000) -> str:

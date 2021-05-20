@@ -5,6 +5,7 @@ from hic_scrambler import input_utils as iu
 from hic_scrambler import genome_utils as gu
 import os
 from os.path import join
+import glob
 import cooler
 import hicstuff.pipeline as hpi
 import numpy as np
@@ -74,9 +75,13 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         threads=8,
         enzyme=binsize,
         mat_fmt="cool",
+        no_cleanup = False
     )
     clr_ori = cooler.Cooler(join(outdir, "original.cool"))
     slice_bins = 512
+    
+    
+
     # Make edited genomes. Each edited genome will start from a subset of the
     # original (full) genome.
     for i in range(nruns):
@@ -88,7 +93,7 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         slice_region = gu.slice_genome(
             fasta, sub_fasta, slice_size=slice_bins * binsize
         )
-
+    
         # Save map corresponding to the slice region (before SV)
         mat_ori = clr_ori.matrix(sparse=False, balance=False).fetch(slice_region)
         np.save(join(rundir, "truth.npy"), mat_ori)
@@ -110,12 +115,14 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
             threads=8,
             enzyme=binsize,
             mat_fmt="cool",
+            no_cleanup=True
         )
+
         # Extract window around each SV and as many random windows
         clr_mod = cooler.Cooler(join(rundir, "scrambled.cool"))
         breakpoints, labels = gu.pos_to_coord(clr_mod, mixer.sv)
-        X, Y = gu.subset_mat(
-            clr_mod, breakpoints, labels, win_size=128, prop_negative=0.5
+        X, Y, PERCENTS, STARTS, ENDS = gu.subset_mat(
+            clr_mod, breakpoints, labels, win_size=128, binsize = binsize, rundir = rundir, tmpdir = tmpdir, prop_negative=0.5
         )
         # Save whole slice map (after SV)
         np.save(
@@ -126,12 +133,24 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         # Save all corresponding Hi-C windows and associated label (SV type) to a file
         np.save(join(rundir, "x.npy"), X)
         np.save(join(rundir, "y.npy"), Y)
+        np.save(join(rundir, "percents.npy"), PERCENTS)
+        np.save(join(rundir, "n_starts.npy"), STARTS)
+        np.save(join(rundir, "n_ends.npy"), ENDS)
         # Save list of SVs coordinates
         gu.save_sv(mixer.sv, clr_mod, join(rundir, "breakpoints.tsv"))
+
+        file_list = [f for f in glob.glob(tmpdir + "/*")]
+        
+
+        for f in file_list:
+            os.remove(f)
+
 
     # For convenience, also generate a file with the windows, labels and
     # matrices from all combined runs
 
+
+    
     # Helper function to concatenate piles of images
     conc = lambda base: np.concatenate([np.load(base.format(i)) for i in range(nruns)])
     feats = conc(join(outdir, "RUN_{}", "x.npy"))
