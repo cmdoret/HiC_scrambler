@@ -122,8 +122,8 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         clr_mod = cooler.Cooler(join(rundir, "scrambled.cool"))
         breakpoints, labels, coords_BP = gu.pos_to_coord(clr_mod, mixer.sv)
 
-        X, Y, PERCENTSGC, STARTS, ENDS, NREADS, COORDS_WIN = gu.subset_mat(
-            clr_mod, breakpoints, coords_BP, labels, win_size=128, binsize = binsize, rundir = rundir, tmpdir = tmpdir, prop_negative=0.5
+        X, Y, PERCENTSGC, STARTS, ENDS, NREADS, COORDS_WIN, COMPLEXITY = gu.subset_mat(
+            clr_mod, breakpoints, coords_BP, labels, win_size=128, binsize = binsize, rundir = rundir, tmpdir = tmpdir, prop_negative=0.33
         )
         # Save whole slice map (after SV)
         np.save(
@@ -139,6 +139,7 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         np.save(join(rundir, "n_ends.npy"), ENDS)
         np.save(join(rundir, "n_reads.npy"), NREADS)
         np.save(join(rundir, "coords_win.npy"), COORDS_WIN)
+        np.save(join(rundir, "complexity.npy"), COMPLEXITY)
         # Save list of SVs coordinates
         gu.save_sv(mixer.sv, clr_mod, join(rundir, "breakpoints.tsv"))
 

@@ -13,6 +13,7 @@ from typing import Optional, Tuple
 import hic_scrambler.sv as hsv
 import hic_scrambler.BAM_functions as bm
 import hic_scrambler.GCpercent_functions as gcp
+import hic_scrambler.complexity_function as cf
 
 
 class GenomeMixer(object):
@@ -353,6 +354,8 @@ def subset_mat(
         An array with the smoothed number of reads at each position.     
     coords_windows : numpy.ndarray of int
         Coordinates of the window we use for our compute. 
+    complexity : numpy.ndarray of int
+        Complexity of sequence near each position. 
     """
     h, w = clr.shape
     i_w = int(h - win_size // 2)
@@ -373,11 +376,12 @@ def subset_mat(
     n_windows = int(coords.shape[0] // (1 - prop_negative))
     x = np.zeros((n_windows, win_size, win_size), dtype=np.float64)
     y = np.zeros(n_windows, dtype=np.int64)
-    coords_windows =  np.zeros((n_windows, pixel_tolerance*binsize//12), dtype = np.int64)
-    percents_GC = np.zeros((n_windows, pixel_tolerance*binsize//12), dtype = np.float64)
-    starts_arr = np.zeros((n_windows, pixel_tolerance*binsize//12), dtype = np.int64)
-    ends_arr = np.zeros((n_windows, pixel_tolerance*binsize//12), dtype = np.int64)
-    n_reads = np.zeros((n_windows, pixel_tolerance*binsize//12), dtype = np.int64)
+    coords_windows =  np.zeros((n_windows, pixel_tolerance*binsize), dtype = np.int64)
+    percents_GC = np.zeros((n_windows, pixel_tolerance*binsize), dtype = np.float64)
+    starts_arr = np.zeros((n_windows, pixel_tolerance*binsize), dtype = np.int64)
+    ends_arr = np.zeros((n_windows, pixel_tolerance*binsize), dtype = np.int64)
+    n_reads = np.zeros((n_windows, pixel_tolerance*binsize), dtype = np.int64)
+    complexity = np.zeros((n_windows, pixel_tolerance*binsize), dtype = np.int64)
 
     if win_size >= min(h, w):
         print("Window size must be smaller than the Hi-C matrix.")
@@ -397,8 +401,8 @@ def subset_mat(
         x[i, :, :] = win
         y[i] = sv_to_int[labels[i]]
 
-        c_beg = coordsBP[i] - (pixel_tolerance*binsize)//24
-        c_end = coordsBP[i] + (pixel_tolerance*binsize)//24
+        c_beg = coordsBP[i] - (pixel_tolerance*binsize)//2
+        c_end = coordsBP[i] + (pixel_tolerance*binsize)//2
         
 
         for c_ in range(c_beg, c_end):
@@ -407,6 +411,7 @@ def subset_mat(
             coords_windows[i,c_ - c_beg] = c_
             seq = gcp.load_seq(rundir + "/mod_genome.fa", chrom_name,c_-size_win_bp//2, c_ + size_win_bp//2)
             percents_GC[i, c_-c_beg] = gcp.percent_GC(seq)
+            complexity[i, c_- c_beg] = cf.lempel_complexity(seq)
             region = chrom_name + ":" + str(c_-size_win_bp//2) + "-" + str(c_end+ size_win_bp//2)
             start_arr, end_arr = bm.bam_region_read_ends(file = tmpdir + "/scrambled.for.bam", region = region, side  = "both")
             starts_arr[i,c_-c_beg] = start_arr
@@ -435,8 +440,8 @@ def subset_mat(
         y[i] = 0
         x = x.astype(int)
 
-        c_beg = c*binsize - (pixel_tolerance*binsize)//24
-        c_end = c*binsize + (pixel_tolerance*binsize)//24
+        c_beg = c*binsize - (pixel_tolerance*binsize)//2
+        c_end = c*binsize + (pixel_tolerance*binsize)//2
 
         region = chrom_name + ":" + str(c_beg) + "-" + str(c_end)
 
@@ -447,6 +452,7 @@ def subset_mat(
             coords_windows[i,c_ - c_beg] = c_
             seq = gcp.load_seq(rundir + "/mod_genome.fa", chrom_name,c_-size_win_bp//2, c_ + size_win_bp//2)
             percents_GC[i, c_-c_beg] = gcp.percent_GC(seq)
+            complexity[i, c_- c_beg] = cf.lempel_complexity(seq)
             region = chrom_name + ":" + str(c_-size_win_bp//2) + "-" + str(c_end+ size_win_bp//2)
             start_arr, end_arr = bm.bam_region_read_ends(file = tmpdir + "/scrambled.for.bam", region = region, side  = "both")
             starts_arr[i,c_-c_beg] = start_arr
@@ -459,7 +465,7 @@ def subset_mat(
 
     
 
-    return x, y, percents_GC, starts_arr, ends_arr, n_reads, coords_windows
+    return x, y, percents_GC, starts_arr, ends_arr, n_reads, coords_windows, complexity
 
 
 def slice_genome(path: str, out_path: str, slice_size: int = 1000) -> str:
