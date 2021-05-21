@@ -128,34 +128,29 @@ def bam_region_read_ends(file: str, region: str, side: str = "both") -> np.ndarr
     elif side == "end":
         return end_arr
     else:
-        return start_arr, end_arr
+        return np.mean(start_arr), np.mean(end_arr)
 
-def bam_start_end(file: str, region: str) -> np.ndarray:
+def bam_region_coverage(file: str, region: str) -> np.ndarray:
+    """Retrieves the basepair-level coverage track for a BAM region.
 
-    bam = ps.AlignmentFile(file, "rb")
-    file_sorted = check_gen_sort_index(bam)
-    bam = ps.AlignmentFile(file_sorted, "rb")
-    chrom, start, end = parse_ucsc_region(region)
+    Parameters
+    ----------
+    file : str
+        path to the sorted, indexed BAM file.
+    region : str
+        UCSC-formatted region string (e.g. chr1:103-410)
 
-
-    list_start = list()
-    list_end = list()
-    
-    for read in bam.fetch(chrom, start, end):
-        
-        list_start.append(read.reference_start)
-        list_end.append(read.reference_end)
-
-    arr_start = np.array(list_start)
-    arr_end = np.array(list_end)
-
-    return arr_start, arr_end
-    
-def n_alignement(file: str, region: str):
+    Returns
+    -------
+    numpy.ndarray of ints :
+        number of reads overlapping each position in region.
+    """
 
     bam = ps.AlignmentFile(file, "rb")
-    file_sorted = check_gen_sort_index(bam)
-    bam = ps.AlignmentFile(file_sorted, "rb")
     chrom, start, end = parse_ucsc_region(region)
 
-    return bam.count(chrom, start, end)
+    cov_arr = np.zeros(end - start)
+    for i, col in enumerate(bam.pileup(chrom, start, end, truncate=True)):
+        cov_arr[i] = col.n
+
+    return np.mean(cov_arr)

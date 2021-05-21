@@ -120,9 +120,10 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
 
         # Extract window around each SV and as many random windows
         clr_mod = cooler.Cooler(join(rundir, "scrambled.cool"))
-        breakpoints, labels = gu.pos_to_coord(clr_mod, mixer.sv)
-        X, Y, PERCENTS, STARTS, ENDS = gu.subset_mat(
-            clr_mod, breakpoints, labels, win_size=128, binsize = binsize, rundir = rundir, tmpdir = tmpdir, prop_negative=0.5
+        breakpoints, labels, coords_BP = gu.pos_to_coord(clr_mod, mixer.sv)
+
+        X, Y, PERCENTSGC, STARTS, ENDS, NREADS, COORDS_WIN = gu.subset_mat(
+            clr_mod, breakpoints, coords_BP, labels, win_size=128, binsize = binsize, rundir = rundir, tmpdir = tmpdir, prop_negative=0.5
         )
         # Save whole slice map (after SV)
         np.save(
@@ -133,9 +134,11 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         # Save all corresponding Hi-C windows and associated label (SV type) to a file
         np.save(join(rundir, "x.npy"), X)
         np.save(join(rundir, "y.npy"), Y)
-        np.save(join(rundir, "percents.npy"), PERCENTS)
+        np.save(join(rundir, "percents.npy"), PERCENTSGC)
         np.save(join(rundir, "n_starts.npy"), STARTS)
         np.save(join(rundir, "n_ends.npy"), ENDS)
+        np.save(join(rundir, "n_reads.npy"), NREADS)
+        np.save(join(rundir, "coords_win.npy"), COORDS_WIN)
         # Save list of SVs coordinates
         gu.save_sv(mixer.sv, clr_mod, join(rundir, "breakpoints.tsv"))
 

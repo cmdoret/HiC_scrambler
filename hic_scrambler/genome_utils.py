@@ -242,7 +242,7 @@ def save_sv(sv_df: pd.DataFrame, clr: cooler.Cooler, path: str):
 
 def pos_to_coord(
     clr: cooler.Cooler, sv_df: pd.DataFrame
-) -> Tuple[np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Converts start - end genomic positions from structural variations to breakpoints
     in matrix coordinates.
@@ -262,6 +262,8 @@ def pos_to_coord(
         variations breakpoints in the matrix.
     labels : numpy.ndarray of str
         An N X 1 array of labels corresponding to SV type.
+    pos_BP : numpy.ndarray of int
+        A N x 1 numpy array of numeric values representing position of breakpoints in the BP.
     """
     # Get coordinates to match binning
     res = clr.binsize
@@ -271,6 +273,7 @@ def pos_to_coord(
     s_df = sv_df.loc[:, ["sv_type", "chrom", "start"]]
     s_df.rename(index=str, columns={"start": "pos"}, inplace=True)
     e_df = sv_df.loc[:, ["sv_type", "chrom", "end"]]
+    e_df = e_df[e_df["sv_type"] != "DEL"]
     e_df.rename(index=str, columns={"end": "pos"}, inplace=True)
     sv_df = pd.concat([s_df, e_df]).reset_index(drop=True)
     # Assign matrix coordinate (fragment index) to each breakpoint
@@ -285,12 +288,14 @@ def pos_to_coord(
     breakpoints = np.vstack([sv_frags.coord, sv_frags.coord]).T
     breakpoints.astype(int)
     labels = np.array(sv_frags.sv_type.tolist())
-    return breakpoints, labels
+    pos_BP = sv_frags.pos.values
+    return breakpoints, labels, pos_BP
 
 
 def subset_mat(
     clr: cooler.Cooler,
     coords: np.ndarray,
+    coordsBP : np.ndarray,
     labels: np.ndarray,
     win_size: int,
     binsize: int,
@@ -341,14 +346,19 @@ def subset_mat(
     percents : numpy.ndarray of floats
         An array with the evolution of GC% for each coord.
     starts_arr : numpy.ndarray of int
-        An array with the number of reads which start at each position near the coord.  
+        An array with the smoothed number of reads which start at each position.  
     ends_arr : numpy.ndarray of int
-        An array with the number of reads which end at each position near the coord. 
+        An array with the smoothed number of reads which end at each position. 
+    nreads : numpy.ndarray of int
+        An array with the smoothed number of reads at each position.     
+    coords_windows : numpy.ndarray of int
+        Coordinates of the window we use for our compute. 
     """
     h, w = clr.shape
     i_w = int(h - win_size // 2)
     j_w = int(w - win_size // 2)
     sv_to_int = {"INV": 1, "DEL": 2, "INS": 3}
+    size_win_bp = 100
     # Only keep coords far enough from borders of the matrix
     valid_coords = np.where(
         (coords[:, 0] > int(win_size / 2))
@@ -358,22 +368,24 @@ def subset_mat(
     )[0]
     coords = coords[valid_coords, :]
     labels = labels[valid_coords]
+    coordsBP = coordsBP[valid_coords]
     # Number of windows to generate (including negative windows)
     n_windows = int(coords.shape[0] // (1 - prop_negative))
     x = np.zeros((n_windows, win_size, win_size), dtype=np.float64)
     y = np.zeros(n_windows, dtype=np.int64)
-    percents = np.zeros((n_windows, binsize), dtype = np.float64)
-    starts_arr = np.zeros((n_windows, binsize), dtype = np.int64)
-    ends_arr = np.zeros((n_windows, binsize), dtype = np.int64)
-    n_reads = np.zeros(n_windows, dtype = np.int64)
-    start_reads_dict = dict()
-    end_reads_dict = dict()
+    coords_windows =  np.zeros((n_windows, pixel_tolerance*binsize//12), dtype = np.int64)
+    percents_GC = np.zeros((n_windows, pixel_tolerance*binsize//12), dtype = np.float64)
+    starts_arr = np.zeros((n_windows, pixel_tolerance*binsize//12), dtype = np.int64)
+    ends_arr = np.zeros((n_windows, pixel_tolerance*binsize//12), dtype = np.int64)
+    n_reads = np.zeros((n_windows, pixel_tolerance*binsize//12), dtype = np.int64)
+
     if win_size >= min(h, w):
         print("Window size must be smaller than the Hi-C matrix.")
     halfw = win_size // 2
     # Getting SV windows
     coords = coords.astype(int)
     for i in range(coords.shape[0]):
+        print(i)
         c = coords[i, :]
         try:
             win = clr.matrix(sparse=False, balance=False)[
@@ -385,38 +397,26 @@ def subset_mat(
         x[i, :, :] = win
         y[i] = sv_to_int[labels[i]]
 
-        c_beg = c[0]*binsize - binsize//2
-        c_end = c[0]*binsize + binsize//2
+        c_beg = coordsBP[i] - (pixel_tolerance*binsize)//24
+        c_end = coordsBP[i] + (pixel_tolerance*binsize)//24
+        
 
         for c_ in range(c_beg, c_end):
             
-            seq = gcp.load_seq(rundir + "/mod_genome.fa", chrom_name,c_-binsize//2, c_ + binsize//2)
-            percents[i, c_-c_beg] = gcp.percent_GC(seq)
-
-    
-        seq = gcp.load_seq(rundir + "/mod_genome.fa", chrom_name,c_beg, c_end)
-        percent = gcp.percent_GC(seq)
-
-        region = chrom_name + ":" + str(c_beg) + "-" + str(c_end)
-        
-        start_arr, end_arr = bm.bam_region_read_ends(file = tmpdir + "/scrambled.for.bam", region = region, side  = "both")
-        start_read, end_read = bm.bam_start_end(tmpdir +"/scrambled.for.bam", region)
-
-        n_reads_i = bm.n_alignement(file = tmpdir + "/scrambled.for.bam", region = region)
-
-        start_reads_dict[i] = start_read
-        end_reads_dict[i] = end_read
-
-        percents[i,:] = percent
-        starts_arr[i,:] = start_arr
-        ends_arr[i,:] = end_arr
-
-        n_reads[i] = n_reads_i
-
+            
+            coords_windows[i,c_ - c_beg] = c_
+            seq = gcp.load_seq(rundir + "/mod_genome.fa", chrom_name,c_-size_win_bp//2, c_ + size_win_bp//2)
+            percents_GC[i, c_-c_beg] = gcp.percent_GC(seq)
+            region = chrom_name + ":" + str(c_-size_win_bp//2) + "-" + str(c_end+ size_win_bp//2)
+            start_arr, end_arr = bm.bam_region_read_ends(file = tmpdir + "/scrambled.for.bam", region = region, side  = "both")
+            starts_arr[i,c_-c_beg] = start_arr
+            ends_arr[i,c_-c_beg] = end_arr
+            n_reads[i,c_-c_beg] = bm.bam_region_coverage(file = tmpdir + "/scrambled.for.bam", region = region)
 
     # Getting negative windows
     neg_coords = set()
     for i in range(coords.shape[0], n_windows):
+        print(i)
         tries = 0
         c = np.random.randint(win_size // 2, i_w)
         # this coordinate must not exist already
@@ -435,40 +435,31 @@ def subset_mat(
         y[i] = 0
         x = x.astype(int)
 
-        c_beg = c*binsize - binsize//2
-        c_end = c*binsize + binsize//2
-        
-        for c_ in range(c_beg, c_end):
-            
-            seq = gcp.load_seq(rundir + "/mod_genome.fa", chrom_name,c_-binsize//2, c_ + binsize//2)
-            percents[i, c_-c_beg] = gcp.percent_GC(seq)
+        c_beg = c*binsize - (pixel_tolerance*binsize)//24
+        c_end = c*binsize + (pixel_tolerance*binsize)//24
 
         region = chrom_name + ":" + str(c_beg) + "-" + str(c_end)
-        start_arr, end_arr = bm.bam_region_read_ends(file = tmpdir + "/scrambled.for.bam", region = region, side  = "both")
-
-        start_read, end_read = bm.bam_start_end(tmpdir + "/scrambled.for.bam", region)
-        
-        n_reads_i = bm.n_alignement(file = tmpdir + "/scrambled.for.bam", region = region)
-
-        start_reads_dict[i] = start_read
-        end_reads_dict[i] = end_read
-
-        percents[i,:] = percent
-        starts_arr[i,:] = start_arr
-        ends_arr[i,:] = end_arr
-
-        n_reads[i] = n_reads_i
 
 
-    with open(rundir +"/start_pos.pkl", "wb") as tf:
-        pickle.dump(start_reads_dict,tf)
+        for c_ in range(c_beg, c_end):
 
-    with open(rundir +"/end_pos.pkl", "wb") as tf:
-        pickle.dump(end_reads_dict,tf)
+            
+            coords_windows[i,c_ - c_beg] = c_
+            seq = gcp.load_seq(rundir + "/mod_genome.fa", chrom_name,c_-size_win_bp//2, c_ + size_win_bp//2)
+            percents_GC[i, c_-c_beg] = gcp.percent_GC(seq)
+            region = chrom_name + ":" + str(c_-size_win_bp//2) + "-" + str(c_end+ size_win_bp//2)
+            start_arr, end_arr = bm.bam_region_read_ends(file = tmpdir + "/scrambled.for.bam", region = region, side  = "both")
+            starts_arr[i,c_-c_beg] = start_arr
+            ends_arr[i,c_-c_beg] = end_arr
+            n_reads[i,c_-c_beg] = bm.bam_region_coverage(file = tmpdir + "/scrambled.for.bam", region = region)
+
+
+
+
+
     
-    np.save(rundir +  "/n_read.npy", n_reads)
 
-    return x, y, percents, starts_arr, ends_arr
+    return x, y, percents_GC, starts_arr, ends_arr, n_reads, coords_windows
 
 
 def slice_genome(path: str, out_path: str, slice_size: int = 1000) -> str:
