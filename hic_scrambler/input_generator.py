@@ -5,6 +5,7 @@ from hic_scrambler import input_utils as iu
 from hic_scrambler import genome_utils as gu
 import os
 from os.path import join
+import shutil
 import glob
 import cooler
 import hicstuff.pipeline as hpi
@@ -120,11 +121,14 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
 
         # Extract window around each SV and as many random windows
         clr_mod = cooler.Cooler(join(rundir, "scrambled.cool"))
-        breakpoints, labels, coords_BP = gu.pos_to_coord(clr_mod, mixer.sv)
+        breakpoints, labels, coords_BP, chroms = gu.pos_to_coord(clr_mod, mixer.sv)
 
         X, Y, PERCENTSGC, STARTS, ENDS, NREADS, COORDS_WIN, COMPLEXITY = gu.subset_mat(
-            clr_mod, breakpoints, coords_BP, labels, win_size=128, binsize = binsize, rundir = rundir, tmpdir = tmpdir, prop_negative=0.33
+            clr_mod, breakpoints, coords_BP, labels, chroms, win_size=128, binsize = binsize, rundir = rundir, tmpdir = tmpdir, prop_negative=0.33
         )
+
+        shutil.move(join(tmpdir, "scrambled.for.bam"),join(rundir, "scrambled.for.bam") )
+        shutil.move(join(tmpdir, "scrambled.for.bam.bai"),join(rundir, "scrambled.for.bam.bai") )
         # Save whole slice map (after SV)
         np.save(
             join(rundir, f"scrambled.npy"),

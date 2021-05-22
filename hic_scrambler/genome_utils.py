@@ -243,7 +243,7 @@ def save_sv(sv_df: pd.DataFrame, clr: cooler.Cooler, path: str):
 
 def pos_to_coord(
     clr: cooler.Cooler, sv_df: pd.DataFrame
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Converts start - end genomic positions from structural variations to breakpoints
     in matrix coordinates.
@@ -265,6 +265,8 @@ def pos_to_coord(
         An N X 1 array of labels corresponding to SV type.
     pos_BP : numpy.ndarray of int
         A N x 1 numpy array of numeric values representing position of breakpoints in the BP.
+    Chrom : numpy.ndarray of str
+        A N x 1 numpy array of chrom for each position.    
     """
     # Get coordinates to match binning
     res = clr.binsize
@@ -290,7 +292,9 @@ def pos_to_coord(
     breakpoints.astype(int)
     labels = np.array(sv_frags.sv_type.tolist())
     pos_BP = sv_frags.pos.values
-    return breakpoints, labels, pos_BP
+    chroms = sv_frags.chrom.values
+
+    return breakpoints, labels, pos_BP, chroms
 
 
 def subset_mat(
@@ -298,13 +302,13 @@ def subset_mat(
     coords: np.ndarray,
     coordsBP : np.ndarray,
     labels: np.ndarray,
+    chroms: np.ndarray,
     win_size: int,
     binsize: int,
     rundir : str,
     tmpdir : str,
     prop_negative: float = 0.5,
     pixel_tolerance: int = 3,
-    chrom_name: str = "Sc_chr04"
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Samples evenly sized windows from a matrix. Windows are centered around
@@ -372,6 +376,7 @@ def subset_mat(
     coords = coords[valid_coords, :]
     labels = labels[valid_coords]
     coordsBP = coordsBP[valid_coords]
+    chroms = chroms[valid_coords]
     # Number of windows to generate (including negative windows)
     n_windows = int(coords.shape[0] // (1 - prop_negative))
     x = np.zeros((n_windows, win_size, win_size), dtype=np.float64)
@@ -409,10 +414,10 @@ def subset_mat(
             
             
             coords_windows[i,c_ - c_beg] = c_
-            seq = gcp.load_seq(rundir + "/mod_genome.fa", chrom_name,c_-size_win_bp//2, c_ + size_win_bp//2)
+            seq = gcp.load_seq(rundir + "/mod_genome.fa", chroms[i],c_-size_win_bp//2, c_ + size_win_bp//2)
             percents_GC[i, c_-c_beg] = gcp.percent_GC(seq)
             complexity[i, c_- c_beg] = cf.lempel_complexity(seq)
-            region = chrom_name + ":" + str(c_-size_win_bp//2) + "-" + str(c_end+ size_win_bp//2)
+            region = chroms[i] + ":" + str(c_-size_win_bp//2) + "-" + str(c_end+ size_win_bp//2)
             start_arr, end_arr = bm.bam_region_read_ends(file = tmpdir + "/scrambled.for.bam", region = region, side  = "both")
             starts_arr[i,c_-c_beg] = start_arr
             ends_arr[i,c_-c_beg] = end_arr
@@ -443,17 +448,17 @@ def subset_mat(
         c_beg = c*binsize - (pixel_tolerance*binsize)//2
         c_end = c*binsize + (pixel_tolerance*binsize)//2
 
-        region = chrom_name + ":" + str(c_beg) + "-" + str(c_end)
+        
 
 
         for c_ in range(c_beg, c_end):
 
-            
+            ind_chroms = np.random.randint(len(chroms))
             coords_windows[i,c_ - c_beg] = c_
-            seq = gcp.load_seq(rundir + "/mod_genome.fa", chrom_name,c_-size_win_bp//2, c_ + size_win_bp//2)
+            seq = gcp.load_seq(rundir + "/mod_genome.fa", chroms[ind_chroms],c_-size_win_bp//2, c_ + size_win_bp//2)
             percents_GC[i, c_-c_beg] = gcp.percent_GC(seq)
             complexity[i, c_- c_beg] = cf.lempel_complexity(seq)
-            region = chrom_name + ":" + str(c_-size_win_bp//2) + "-" + str(c_end+ size_win_bp//2)
+            region = chroms[ind_chroms]+ ":" + str(c_-size_win_bp//2) + "-" + str(c_end+ size_win_bp//2)
             start_arr, end_arr = bm.bam_region_read_ends(file = tmpdir + "/scrambled.for.bam", region = region, side  = "both")
             starts_arr[i,c_-c_beg] = start_arr
             ends_arr[i,c_-c_beg] = end_arr
