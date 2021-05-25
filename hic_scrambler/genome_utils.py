@@ -163,6 +163,7 @@ class GenomeMixer(object):
         # Randomize rows in SV table to mix the order of different SV types
         out_sv = out_sv.sample(frac=1).reset_index(drop=True)
         self.sv = out_sv
+        
 
     def save_edited_genome(self, fasta_out: str):
         """
@@ -270,6 +271,10 @@ def pos_to_coord(
     """
     # Get coordinates to match binning
     res = clr.binsize
+    coordBPstart = np.copy(sv_df.start.values)
+    
+    coordBPend = np.copy(sv_df[sv_df["sv_type"] != "DEL"].end.values)
+    
     sv_df.start = (sv_df.start // res) * res
     sv_df.end = (sv_df.end // res) * res
     # Put start and end in the same column, 1 row / breakpoint
@@ -291,7 +296,7 @@ def pos_to_coord(
     breakpoints = np.vstack([sv_frags.coord, sv_frags.coord]).T
     breakpoints.astype(int)
     labels = np.array(sv_frags.sv_type.tolist())
-    pos_BP = sv_frags.pos.values
+    pos_BP = np.concatenate((coordBPstart, coordBPend))
     chroms = sv_frags.chrom.values
 
     return breakpoints, labels, pos_BP, chroms
@@ -365,28 +370,32 @@ def subset_mat(
     i_w = int(h - win_size // 2)
     j_w = int(w - win_size // 2)
     sv_to_int = {"INV": 1, "DEL": 2, "INS": 3}
-    size_win_bp = 100
+    size_train = 60
+    size_win_bp = 2
     # Only keep coords far enough from borders of the matrix
+    
     valid_coords = np.where(
         (coords[:, 0] > int(win_size / 2))
         & (coords[:, 1] > int(win_size / 2))
         & (coords[:, 0] < i_w)
         & (coords[:, 1] < j_w)
     )[0]
+    
     coords = coords[valid_coords, :]
+
     labels = labels[valid_coords]
     coordsBP = coordsBP[valid_coords]
     chroms = chroms[valid_coords]
+    print(coordsBP)
     # Number of windows to generate (including negative windows)
     n_windows = int(coords.shape[0] // (1 - prop_negative))
     x = np.zeros((n_windows, win_size, win_size), dtype=np.float64)
     y = np.zeros(n_windows, dtype=np.int64)
-    coords_windows =  np.zeros((n_windows, pixel_tolerance*binsize), dtype = np.int64)
-    percents_GC = np.zeros((n_windows, pixel_tolerance*binsize), dtype = np.float64)
-    starts_arr = np.zeros((n_windows, pixel_tolerance*binsize), dtype = np.int64)
-    ends_arr = np.zeros((n_windows, pixel_tolerance*binsize), dtype = np.int64)
-    n_reads = np.zeros((n_windows, pixel_tolerance*binsize), dtype = np.int64)
-    complexity = np.zeros((n_windows, pixel_tolerance*binsize), dtype = np.int64)
+    coords_windows =  np.zeros((n_windows, size_train+1), dtype = np.int64)
+    percents_GC = np.zeros((n_windows, size_train+1), dtype = np.float64)
+    start_plus_end = np.zeros((n_windows, size_train+1), dtype = np.int64)
+    n_reads = np.zeros((n_windows, size_train+1), dtype = np.int64)
+    complexity = np.zeros((n_windows, size_train+1), dtype = np.int64)
 
     if win_size >= min(h, w):
         print("Window size must be smaller than the Hi-C matrix.")
@@ -395,6 +404,7 @@ def subset_mat(
     coords = coords.astype(int)
     for i in range(coords.shape[0]):
         print(i)
+        print(coordsBP[i])
         c = coords[i, :]
         try:
             win = clr.matrix(sparse=False, balance=False)[
@@ -406,21 +416,19 @@ def subset_mat(
         x[i, :, :] = win
         y[i] = sv_to_int[labels[i]]
 
-        c_beg = coordsBP[i] - (pixel_tolerance*binsize)//2
-        c_end = coordsBP[i] + (pixel_tolerance*binsize)//2
+        c_beg = coordsBP[i] - size_train//2
+        c_end = coordsBP[i] + size_train//2 +1
         
 
         for c_ in range(c_beg, c_end):
             
             
             coords_windows[i,c_ - c_beg] = c_
-            seq = gcp.load_seq(rundir + "/mod_genome.fa", chroms[i],c_-size_win_bp//2, c_ + size_win_bp//2)
+            seq = gcp.load_seq(rundir + "/mod_genome.fa", chroms[i],c_-size_win_bp//2, c_ + size_win_bp//2 + 1)
             percents_GC[i, c_-c_beg] = gcp.percent_GC(seq)
             complexity[i, c_- c_beg] = cf.lempel_complexity(seq)
-            region = chroms[i] + ":" + str(c_-size_win_bp//2) + "-" + str(c_end+ size_win_bp//2)
-            start_arr, end_arr = bm.bam_region_read_ends(file = tmpdir + "/scrambled.for.bam", region = region, side  = "both")
-            starts_arr[i,c_-c_beg] = start_arr
-            ends_arr[i,c_-c_beg] = end_arr
+            region = chroms[i] + ":" + str(c_-size_win_bp//2) + "-" + str(c_+ size_win_bp//2 + 1)
+            start_plus_end[i,c_-c_beg] = bm.bam_region_read_ends(file = tmpdir + "/scrambled.for.bam", region = region, side  = "both")
             n_reads[i,c_-c_beg] = bm.bam_region_coverage(file = tmpdir + "/scrambled.for.bam", region = region)
 
     # Getting negative windows
@@ -445,8 +453,8 @@ def subset_mat(
         y[i] = 0
         x = x.astype(int)
 
-        c_beg = c*binsize - (pixel_tolerance*binsize)//2
-        c_end = c*binsize + (pixel_tolerance*binsize)//2
+        c_beg = c*binsize - size_train//2
+        c_end = c*binsize + size_train//2 +1
 
         
 
@@ -455,13 +463,11 @@ def subset_mat(
 
             ind_chroms = np.random.randint(len(chroms))
             coords_windows[i,c_ - c_beg] = c_
-            seq = gcp.load_seq(rundir + "/mod_genome.fa", chroms[ind_chroms],c_-size_win_bp//2, c_ + size_win_bp//2)
+            seq = gcp.load_seq(rundir + "/mod_genome.fa", chroms[ind_chroms],c_-size_win_bp//2, c_ + size_win_bp//2 + 1)
             percents_GC[i, c_-c_beg] = gcp.percent_GC(seq)
             complexity[i, c_- c_beg] = cf.lempel_complexity(seq)
-            region = chroms[ind_chroms]+ ":" + str(c_-size_win_bp//2) + "-" + str(c_end+ size_win_bp//2)
-            start_arr, end_arr = bm.bam_region_read_ends(file = tmpdir + "/scrambled.for.bam", region = region, side  = "both")
-            starts_arr[i,c_-c_beg] = start_arr
-            ends_arr[i,c_-c_beg] = end_arr
+            region = chroms[ind_chroms]+ ":" + str(c_-size_win_bp//2) + "-" + str(c_+ size_win_bp//2 + 1)
+            start_plus_end[i,c_-c_beg] = bm.bam_region_read_ends(file = tmpdir + "/scrambled.for.bam", region = region, side  = "both")           
             n_reads[i,c_-c_beg] = bm.bam_region_coverage(file = tmpdir + "/scrambled.for.bam", region = region)
 
 
@@ -470,7 +476,7 @@ def subset_mat(
 
     
 
-    return x, y, percents_GC, starts_arr, ends_arr, n_reads, coords_windows, complexity
+    return x, y, percents_GC, start_plus_end, n_reads, coords_windows, complexity
 
 
 def slice_genome(path: str, out_path: str, slice_size: int = 1000) -> str:

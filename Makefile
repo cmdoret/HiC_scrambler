@@ -1,6 +1,6 @@
-READS1="./data/for.fq.gz"
-READS2="./data/rev.fq.gz"
-GENOME="./data/genome.fa"
+READS1="./data/genome/for.fq.gz"
+READS2="./data/genome/rev.fq.gz"
+GENOME="./data/genome/genome.fa"
 
 .PHONY: clean demo test deps setup
 
@@ -15,7 +15,10 @@ demo: clean
 
 train:
 	python ./hic_scrambler/train.py
-
+	
+optim:
+	python ./hic_scrambler/optim.py
+	
 predict:
 	python ./hic_scrambler/predict.py
 

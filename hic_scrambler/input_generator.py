@@ -94,7 +94,7 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         slice_region = gu.slice_genome(
             fasta, sub_fasta, slice_size=slice_bins * binsize
         )
-    
+     
         # Save map corresponding to the slice region (before SV)
         mat_ori = clr_ori.matrix(sparse=False, balance=False).fetch(slice_region)
         np.save(join(rundir, "truth.npy"), mat_ori)
@@ -104,6 +104,7 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         mixer.generate_sv()
         mod_genome = join(rundir, "mod_genome.fa")
         mixer.save_edited_genome(mod_genome)
+        
         # Generate contact map using the edited genome
         hpi.full_pipeline(
             mod_genome,
@@ -121,14 +122,15 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
 
         # Extract window around each SV and as many random windows
         clr_mod = cooler.Cooler(join(rundir, "scrambled.cool"))
+        
         breakpoints, labels, coords_BP, chroms = gu.pos_to_coord(clr_mod, mixer.sv)
-
-        X, Y, PERCENTSGC, STARTS, ENDS, NREADS, COORDS_WIN, COMPLEXITY = gu.subset_mat(
-            clr_mod, breakpoints, coords_BP, labels, chroms, win_size=128, binsize = binsize, rundir = rundir, tmpdir = tmpdir, prop_negative=0.33
+        print(mixer.sv)
+        
+        X, Y, PERCENTSGC, STARTSPLUSENDS, NREADS, COORDS_WIN, COMPLEXITY = gu.subset_mat(
+            clr_mod, breakpoints, coords_BP, labels, chroms, win_size=128, binsize = binsize, rundir = rundir, tmpdir = tmpdir, prop_negative=0.4
         )
 
-        shutil.move(join(tmpdir, "scrambled.for.bam"),join(rundir, "scrambled.for.bam") )
-        shutil.move(join(tmpdir, "scrambled.for.bam.bai"),join(rundir, "scrambled.for.bam.bai") )
+        
         # Save whole slice map (after SV)
         np.save(
             join(rundir, f"scrambled.npy"),
@@ -139,12 +141,13 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         np.save(join(rundir, "x.npy"), X)
         np.save(join(rundir, "y.npy"), Y)
         np.save(join(rundir, "percents.npy"), PERCENTSGC)
-        np.save(join(rundir, "n_starts.npy"), STARTS)
-        np.save(join(rundir, "n_ends.npy"), ENDS)
+        np.save(join(rundir, "startsplusend.npy"), STARTSPLUSENDS)
         np.save(join(rundir, "n_reads.npy"), NREADS)
         np.save(join(rundir, "coords_win.npy"), COORDS_WIN)
         np.save(join(rundir, "complexity.npy"), COMPLEXITY)
+        np.save(join(rundir, "coordsBP.npy"), coords_BP)
         # Save list of SVs coordinates
+        
         gu.save_sv(mixer.sv, clr_mod, join(rundir, "breakpoints.tsv"))
 
         file_list = [f for f in glob.glob(tmpdir + "/*")]
