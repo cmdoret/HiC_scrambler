@@ -128,7 +128,8 @@ def bam_region_read_ends(file: str, region: str, side: str = "both") -> np.ndarr
     elif side == "end":
         return end_arr
     else:
-        return np.mean(start_arr+ end_arr)
+        return start_arr, end_arr
+
 
 def bam_region_coverage(file: str, region: str) -> np.ndarray:
     """Retrieves the basepair-level coverage track for a BAM region.
@@ -153,7 +154,7 @@ def bam_region_coverage(file: str, region: str) -> np.ndarray:
     for i, col in enumerate(bam.pileup(chrom, start, end, truncate=True)):
         cov_arr[i] = col.n
 
-    return np.mean(cov_arr)
+    return cov_arr
 
 def mean_weighted(array : np.array) -> float:
     """Return a mean where coords from the center are more important than 
