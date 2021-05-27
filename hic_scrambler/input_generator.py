@@ -123,13 +123,14 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         # Extract window around each SV and as many random windows
         clr_mod = cooler.Cooler(join(rundir, "scrambled.cool"))
         
-        breakpoints, labels, coords_BP, chroms = gu.pos_to_coord(clr_mod, mixer.sv)
+        breakpoints, labels, coords_BP, chroms, coordisstartend = gu.pos_to_coord(clr_mod, mixer.sv)
         print(mixer.sv)
         
-        X, Y, PERCENTSGC, STARTSPLUSENDS, NREADS, COORDS_WIN, COMPLEXITY = gu.subset_mat(
-            clr_mod, breakpoints, coords_BP, labels, chroms, win_size=128, binsize = binsize, rundir = rundir, tmpdir = tmpdir, prop_negative=0.4
+        X, Y, PERCENTSGC, STARTREADS, ENDREADS, NREADS, COORDS_WIN, COMPLEXITY = gu.subset_mat(
+            clr_mod, breakpoints, coords_BP, coordisstartend , labels, chroms,  win_size=128, binsize = binsize, rundir = rundir, tmpdir = tmpdir, prop_negative=0.33
         )
-
+        
+        shutil.move(join(tmpdir, "scrambled.for.bam"), join(rundir, "scrambled.for.bam"))
         
         # Save whole slice map (after SV)
         np.save(
@@ -141,11 +142,13 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         np.save(join(rundir, "x.npy"), X)
         np.save(join(rundir, "y.npy"), Y)
         np.save(join(rundir, "percents.npy"), PERCENTSGC)
-        np.save(join(rundir, "startsplusend.npy"), STARTSPLUSENDS)
+        np.save(join(rundir, "start_reads.npy"), STARTREADS)
+        np.save(join(rundir, "end_reads.npy"), ENDREADS)
         np.save(join(rundir, "n_reads.npy"), NREADS)
         np.save(join(rundir, "coords_win.npy"), COORDS_WIN)
         np.save(join(rundir, "complexity.npy"), COMPLEXITY)
         np.save(join(rundir, "coordsBP.npy"), coords_BP)
+        
         # Save list of SVs coordinates
         
         gu.save_sv(mixer.sv, clr_mod, join(rundir, "breakpoints.tsv"))

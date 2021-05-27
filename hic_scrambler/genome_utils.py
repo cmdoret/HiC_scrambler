@@ -268,12 +268,16 @@ def pos_to_coord(
         A N x 1 numpy array of numeric values representing position of breakpoints in the BP.
     Chrom : numpy.ndarray of str
         A N x 1 numpy array of chrom for each position.    
+    coordisstartend : numpy.ndarray of int
+        A N x 1 numpy array to know if coord is for the start of the SV or for the end.  
     """
     # Get coordinates to match binning
     res = clr.binsize
     coordBPstart = np.copy(sv_df.start.values)
-    
+    coordisstart = np.zeros(len(coordBPstart))
+
     coordBPend = np.copy(sv_df[sv_df["sv_type"] != "DEL"].end.values)
+    coordisend = np.ones(len(coordBPend))
     
     sv_df.start = (sv_df.start // res) * res
     sv_df.end = (sv_df.end // res) * res
@@ -297,15 +301,17 @@ def pos_to_coord(
     breakpoints.astype(int)
     labels = np.array(sv_frags.sv_type.tolist())
     pos_BP = np.concatenate((coordBPstart, coordBPend))
+    coordisstartend = np.concatenate((coordisstart, coordisend))
     chroms = sv_frags.chrom.values
 
-    return breakpoints, labels, pos_BP, chroms
+    return breakpoints, labels, pos_BP, chroms, coordisstartend
 
 
 def subset_mat(
     clr: cooler.Cooler,
     coords: np.ndarray,
     coordsBP : np.ndarray,
+    coordisstartend : np.ndarray,
     labels: np.ndarray,
     chroms: np.ndarray,
     win_size: int,
@@ -329,7 +335,10 @@ def subset_mat(
         Pairs of coordinates for which subsets should be generated. A window
         centered around each of these coordinates will be sampled. Dimensions
         are [N, 2].
+    coordsistartend : numpy.ndarry of ints
+        To know if it is a coordinate for the beginning or the end of an SV.
     labels : numpy.ndarray of ints
+        labels of for SVs
     win_size : int
         Size of windows to sample from the matrix.
     binsize: int
@@ -355,9 +364,9 @@ def subset_mat(
         The 1D label vector of N values to use as prediction in a keras model to detect zones of SV.
     percents : numpy.ndarray of floats
         An array with the evolution of GC% for each coord.
-    starts_arr : numpy.ndarray of int
+    start_reads : numpy.ndarray of int
         An array with the smoothed number of reads which start at each position.  
-    ends_arr : numpy.ndarray of int
+    end_reads : numpy.ndarray of int
         An array with the smoothed number of reads which end at each position. 
     nreads : numpy.ndarray of int
         An array with the smoothed number of reads at each position.     
@@ -370,7 +379,7 @@ def subset_mat(
     i_w = int(h - win_size // 2)
     j_w = int(w - win_size // 2)
     sv_to_int = {"INV": 1, "DEL": 2, "INS": 3}
-    size_train = 60
+    size_train = 100
     size_win_bp = 2
     # Only keep coords far enough from borders of the matrix
     
@@ -386,6 +395,10 @@ def subset_mat(
     labels = labels[valid_coords]
     coordsBP = coordsBP[valid_coords]
     chroms = chroms[valid_coords]
+    coordisstartend = coordisstartend[valid_coords]
+
+    np.save(rundir + "/is_start_end.npy", coordisstartend)
+    np.save(rundir + "/coordsBP.npy", coordsBP)
     print(coordsBP)
     # Number of windows to generate (including negative windows)
     n_windows = int(coords.shape[0] // (1 - prop_negative))
@@ -393,9 +406,11 @@ def subset_mat(
     y = np.zeros(n_windows, dtype=np.int64)
     coords_windows =  np.zeros((n_windows, size_train+1), dtype = np.int64)
     percents_GC = np.zeros((n_windows, size_train+1), dtype = np.float64)
-    start_plus_end = np.zeros((n_windows, size_train+1), dtype = np.int64)
+    start_reads = np.zeros((n_windows, size_train+1), dtype = np.int64)
+    end_reads = np.zeros((n_windows, size_train+1), dtype = np.int64)
     n_reads = np.zeros((n_windows, size_train+1), dtype = np.int64)
     complexity = np.zeros((n_windows, size_train+1), dtype = np.int64)
+    
 
     if win_size >= min(h, w):
         print("Window size must be smaller than the Hi-C matrix.")
@@ -417,19 +432,27 @@ def subset_mat(
         y[i] = sv_to_int[labels[i]]
 
         c_beg = coordsBP[i] - size_train//2
-        c_end = coordsBP[i] + size_train//2 +1
+        c_end = coordsBP[i] + size_train//2 
         
 
         for c_ in range(c_beg, c_end):
-            
             
             coords_windows[i,c_ - c_beg] = c_
             seq = gcp.load_seq(rundir + "/mod_genome.fa", chroms[i],c_-size_win_bp//2, c_ + size_win_bp//2 + 1)
             percents_GC[i, c_-c_beg] = gcp.percent_GC(seq)
             complexity[i, c_- c_beg] = cf.lempel_complexity(seq)
-            region = chroms[i] + ":" + str(c_-size_win_bp//2) + "-" + str(c_+ size_win_bp//2 + 1)
-            start_plus_end[i,c_-c_beg] = bm.bam_region_read_ends(file = tmpdir + "/scrambled.for.bam", region = region, side  = "both")
-            n_reads[i,c_-c_beg] = bm.bam_region_coverage(file = tmpdir + "/scrambled.for.bam", region = region)
+        
+        region = chroms[i] + ":" + str(c_beg-size_win_bp//2) + "-" + str(c_end+ size_win_bp//2 + 1)
+        
+        start_read, end_read = bm.bam_region_read_ends(file = tmpdir + "/scrambled.for.bam", region = region, side  = "both")
+        n_read = bm.bam_region_coverage(file = tmpdir +  "/scrambled.for.bam", region = region)
+        
+
+        start_reads[i] = (start_read + np.concatenate((start_read[1:], np.zeros(1))) + np.concatenate((np.zeros(1), start_read[:len(start_read)-1])))[1:-1]//3
+        end_reads[i] = (end_read + np.concatenate((end_read[1:], np.zeros(1))) + np.concatenate((np.zeros(1), end_read[:len(end_read)-1])))[1:-1]//3
+        n_reads[i] = (n_read + np.concatenate((n_read[1:], np.zeros(1))) + np.concatenate((np.zeros(1), n_read[:len(n_read)-1])))[1:-1]//3
+
+        
 
     # Getting negative windows
     neg_coords = set()
@@ -454,29 +477,36 @@ def subset_mat(
         x = x.astype(int)
 
         c_beg = c*binsize - size_train//2
-        c_end = c*binsize + size_train//2 +1
+        c_end = c*binsize + size_train//2 
 
         
 
-
+        ind_chroms = np.random.randint(len(chroms))
         for c_ in range(c_beg, c_end):
 
-            ind_chroms = np.random.randint(len(chroms))
+            
             coords_windows[i,c_ - c_beg] = c_
             seq = gcp.load_seq(rundir + "/mod_genome.fa", chroms[ind_chroms],c_-size_win_bp//2, c_ + size_win_bp//2 + 1)
             percents_GC[i, c_-c_beg] = gcp.percent_GC(seq)
             complexity[i, c_- c_beg] = cf.lempel_complexity(seq)
-            region = chroms[ind_chroms]+ ":" + str(c_-size_win_bp//2) + "-" + str(c_+ size_win_bp//2 + 1)
-            start_plus_end[i,c_-c_beg] = bm.bam_region_read_ends(file = tmpdir + "/scrambled.for.bam", region = region, side  = "both")           
-            n_reads[i,c_-c_beg] = bm.bam_region_coverage(file = tmpdir + "/scrambled.for.bam", region = region)
 
+        region = chroms[ind_chroms] + ":" + str(c_beg-size_win_bp//2) + "-" + str(c_end+ size_win_bp//2 + 1)
+        
+        start_read, end_read = bm.bam_region_read_ends(file = tmpdir + "/scrambled.for.bam", region = region, side  = "both")
+        n_read = bm.bam_region_coverage(file = tmpdir +  "/scrambled.for.bam", region = region)
+
+        start_reads[i] = (start_read + np.concatenate((start_read[1:], np.zeros(1))) + np.concatenate((np.zeros(1), start_read[:len(start_read)-1])))[1:-1]//3
+        end_reads[i] = (end_read + np.concatenate((end_read[1:], np.zeros(1))) + np.concatenate((np.zeros(1), end_read[:len(end_read)-1])))[1:-1]//3
+        n_reads[i] = (n_read + np.concatenate((n_read[1:], np.zeros(1))) + np.concatenate((np.zeros(1), n_read[:len(n_read)-1])))[1:-1]//3
+
+    
 
 
 
 
     
 
-    return x, y, percents_GC, start_plus_end, n_reads, coords_windows, complexity
+    return x, y, percents_GC, start_reads, end_reads, n_reads, coords_windows, complexity
 
 
 def slice_genome(path: str, out_path: str, slice_size: int = 1000) -> str:
