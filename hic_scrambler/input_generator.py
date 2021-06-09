@@ -100,7 +100,7 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         np.save(join(rundir, "truth.npy"), mat_ori)
 
         # Generate random structural variations and apply them to the genome
-        mixer = gu.GenomeMixer(sub_fasta, CONFIG_PATH, "Debug")
+        mixer = gu.GenomeMixer(sub_fasta, CONFIG_PATH, "Yeast")
         mixer.generate_sv()
         mod_genome = join(rundir, "mod_genome.fa")
         mixer.save_edited_genome(mod_genome)
@@ -148,6 +148,7 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         np.save(join(rundir, "coords_win.npy"), COORDS_WIN)
         np.save(join(rundir, "complexity.npy"), COMPLEXITY)
         np.save(join(rundir, "coordsBP.npy"), coords_BP)
+        np.save(join(rundir, "chroms.npy"),  chroms)
         
         # Save list of SVs coordinates
         

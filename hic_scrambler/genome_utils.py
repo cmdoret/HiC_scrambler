@@ -456,6 +456,7 @@ def subset_mat(
 
     # Getting negative windows
     neg_coords = set()
+
     for i in range(coords.shape[0], n_windows):
         print(i)
         tries = 0
