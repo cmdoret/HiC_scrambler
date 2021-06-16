@@ -5,7 +5,7 @@ GENOME="./data/genome/genome.fa"
 .PHONY: clean demo test deps setup
 
 clean:
-	rm -rf demo_out demo_tmp
+	rm -rf out_1 out_2 tmp_1 tmp_2
 
 test:
 	pytest --doctest-modules

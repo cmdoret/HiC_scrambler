@@ -32,7 +32,7 @@ CONFIG_PATH = join(os.path.dirname(__file__), "config", "template.json")
 @click.option(
     "--binsize",
     "-b",
-    default=2000,
+    default=10000,
     show_default=True,
     help="The resolution of matrices to generate, in basepair",
 )
@@ -65,21 +65,21 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
     if reads1 is None or reads2 is None:
         raise NotImplementedError("Reads generation not implemented yet.")
     # Generate an initial contact map for the original genome
-    hpi.full_pipeline(
-        fasta,
-        reads1,
-        reads2,
-        aligner="bowtie2",
-        tmp_dir=tmpdir,
-        out_dir=outdir,
-        prefix="original",
-        threads=8,
-        enzyme=binsize,
-        mat_fmt="cool",
-        no_cleanup = False
-    )
-    clr_ori = cooler.Cooler(join(outdir, "original.cool"))
-    slice_bins = 512
+   # hpi.full_pipeline(
+   #     fasta,
+   #     reads1,
+   #     reads2,
+   #     aligner="bowtie2",
+   #     tmp_dir=tmpdir,
+   #     out_dir=outdir,
+   #     prefix="original",
+   #     threads=8,
+   #     enzyme=binsize,
+     #   mat_fmt="cool",
+    #    no_cleanup = False
+   # )
+   # clr_ori = cooler.Cooler(join(outdir, "original.cool"))
+    slice_bins = 6000
     
     
 
@@ -96,11 +96,11 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         )
      
         # Save map corresponding to the slice region (before SV)
-        mat_ori = clr_ori.matrix(sparse=False, balance=False).fetch(slice_region)
-        np.save(join(rundir, "truth.npy"), mat_ori)
+       # mat_ori = clr_ori.matrix(sparse=False, balance=False).fetch(slice_region)
+       # np.save(join(rundir, "truth.npy"), mat_ori)
 
         # Generate random structural variations and apply them to the genome
-        mixer = gu.GenomeMixer(sub_fasta, CONFIG_PATH, "Yeast")
+        mixer = gu.GenomeMixer(sub_fasta, CONFIG_PATH, "Debug")
         mixer.generate_sv()
         mod_genome = join(rundir, "mod_genome.fa")
         mixer.save_edited_genome(mod_genome)
@@ -124,13 +124,13 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         clr_mod = cooler.Cooler(join(rundir, "scrambled.cool"))
         
         breakpoints, labels, coords_BP, chroms, coordisstartend = gu.pos_to_coord(clr_mod, mixer.sv)
-        print(mixer.sv)
+        
         
         X, Y, PERCENTSGC, STARTREADS, ENDREADS, NREADS, COORDS_WIN, COMPLEXITY = gu.subset_mat(
             clr_mod, breakpoints, coords_BP, coordisstartend , labels, chroms,  win_size=128, binsize = binsize, rundir = rundir, tmpdir = tmpdir, prop_negative=0.33
         )
         
-        shutil.move(join(tmpdir, "scrambled.for.bam"), join(rundir, "scrambled.for.bam"))
+       # shutil.move(join(tmpdir, "scrambled.for.bam"), join(rundir, "scrambled.for.bam"))
         
         # Save whole slice map (after SV)
         np.save(
@@ -179,9 +179,9 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         [iu.pad_matrix(np.load(base.format(i)), slice_bins + 1) for i in range(nruns)]
     ).transpose(2, 0, 1)
 
-    oris = stack(join(outdir, "RUN_{}", "truth.npy"))
+   #oris = stack(join(outdir, "RUN_{}", "truth.npy"))
     mods = stack(join(outdir, "RUN_{}", "scrambled.npy"))
-    np.save(join(outdir, "truth.npy"), oris)
+   #np.save(join(outdir, "truth.npy"), oris)
     np.save(join(outdir, "scrambled.npy"), mods)
 
 

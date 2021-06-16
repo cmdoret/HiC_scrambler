@@ -399,7 +399,7 @@ def subset_mat(
 
     np.save(rundir + "/is_start_end.npy", coordisstartend)
     np.save(rundir + "/coordsBP.npy", coordsBP)
-    print(coordsBP)
+    
     # Number of windows to generate (including negative windows)
     n_windows = int(coords.shape[0] // (1 - prop_negative))
     x = np.zeros((n_windows, win_size, win_size), dtype=np.float64)
@@ -539,7 +539,7 @@ def slice_genome(path: str, out_path: str, slice_size: int = 1000) -> str:
 
     # Get list of valid chromosomes
     chrom_names = list(chrom_sizes.keys())
-
+    print(chrom_names)
     # Pick a random region of slice_size bp in a random chromosome and write it
     picked_chrom = np.random.choice(chrom_names, size=1)[0]
     start_slice = int(
