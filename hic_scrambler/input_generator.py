@@ -3,6 +3,7 @@
 # of labels
 from hic_scrambler import input_utils as iu
 from hic_scrambler import genome_utils as gu
+from hic_scrambler import BAM_functions as bm
 import os
 from os.path import join
 import shutil
@@ -14,6 +15,7 @@ import pathlib
 import click
 
 CONFIG_PATH = join(os.path.dirname(__file__), "config", "template.json")
+
 
 
 @click.command()
@@ -32,7 +34,7 @@ CONFIG_PATH = join(os.path.dirname(__file__), "config", "template.json")
 @click.option(
     "--binsize",
     "-b",
-    default=10000,
+    default=2000,
     show_default=True,
     help="The resolution of matrices to generate, in basepair",
 )
@@ -50,6 +52,12 @@ CONFIG_PATH = join(os.path.dirname(__file__), "config", "template.json")
 )
 @click.argument("fasta", type=click.Path(exists=True))
 @click.argument("outdir", type=click.Path(exists=False))
+
+
+
+
+        
+       
 def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
     """
     This is the orchestrator function that handles the end-to-end pipeline. For
@@ -79,7 +87,7 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
     #    no_cleanup = False
    # )
    # clr_ori = cooler.Cooler(join(outdir, "original.cool"))
-    slice_bins = 6000
+    slice_bins = 9500
     
     
 
@@ -124,13 +132,14 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         clr_mod = cooler.Cooler(join(rundir, "scrambled.cool"))
         
         breakpoints, labels, coords_BP, chroms, coordisstartend = gu.pos_to_coord(clr_mod, mixer.sv)
-        
-        
+
+        size_img = 128
+
         X, Y, PERCENTSGC, STARTREADS, ENDREADS, NREADS, COORDS_WIN, COMPLEXITY = gu.subset_mat(
-            clr_mod, breakpoints, coords_BP, coordisstartend , labels, chroms,  win_size=128, binsize = binsize, rundir = rundir, tmpdir = tmpdir, prop_negative=0.33
+            clr_mod, breakpoints, coords_BP, coordisstartend , labels, chroms,  win_size=size_img, binsize = binsize, rundir = rundir, tmpdir = tmpdir, prop_negative=0.33
         )
         
-       # shutil.move(join(tmpdir, "scrambled.for.bam"), join(rundir, "scrambled.for.bam"))
+        #shutil.move(join(tmpdir, "scrambled.for.bam"), join(rundir, "scrambled.for.bam"))
         
         # Save whole slice map (after SV)
         np.save(
@@ -149,9 +158,11 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         np.save(join(rundir, "complexity.npy"), COMPLEXITY)
         np.save(join(rundir, "coordsBP.npy"), coords_BP)
         np.save(join(rundir, "chroms.npy"),  chroms)
+
+
+        bm.create_features_BAM(size_img, chroms[0], binsize, rundir, tmpdir)
         
         # Save list of SVs coordinates
-        
         gu.save_sv(mixer.sv, clr_mod, join(rundir, "breakpoints.tsv"))
 
         file_list = [f for f in glob.glob(tmpdir + "/*")]
@@ -168,10 +179,16 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
     
     # Helper function to concatenate piles of images
     conc = lambda base: np.concatenate([np.load(base.format(i)) for i in range(nruns)])
-    feats = conc(join(outdir, "RUN_{}", "x.npy"))
-    labs = conc(join(outdir, "RUN_{}", "y.npy"))
-    np.save(join(outdir, "x.npy"), feats)
-    np.save(join(outdir, "y.npy"), labs)
+    
+    feats_hic = conc(join(outdir, "RUN_{}", "x.npy"))
+    labs_hic = conc(join(outdir, "RUN_{}", "y.npy"))
+    np.save(join(outdir, "x.npy"), feats_hic)
+    np.save(join(outdir, "y.npy"), labs_hic)
+    
+    feats_BAM = conc(join(outdir, "RUN_{}", "features.npy"))
+    labs_BAM = conc(join(outdir, "RUN_{}", "labels.npy"))
+    np.save(join(outdir, "features.npy"), feats_BAM)
+    np.save(join(outdir, "labels.npy"), labs_BAM)
 
     # Helper function to pad individual images to the same size and stack them
     # NOTE: Padding is required because we introduced deletions.

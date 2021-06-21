@@ -1,0 +1,12 @@
+README.md
+setup.py
+hic_scrambler/__init__.py
+hic_scrambler/genome_utils.py
+hic_scrambler/input_generator.py
+hic_scrambler/input_utils.py
+hic_scrambler.egg-info/PKG-INFO
+hic_scrambler.egg-info/SOURCES.txt
+hic_scrambler.egg-info/dependency_links.txt
+hic_scrambler.egg-info/top_level.txt
+tests/__init__.py
+tests/test_input.py

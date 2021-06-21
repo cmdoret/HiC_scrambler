@@ -177,6 +177,7 @@ class GenomeMixer(object):
         fasta_out : str
             Path where the edited genome will be written in fasta format.
         """
+        
         with open(fasta_out, "w") as fa_out:
             for rec in SeqIO.parse(self.genome_path, format="fasta"):
                 mutseq = Seq.MutableSeq(str(rec.seq))
@@ -200,13 +201,17 @@ class GenomeMixer(object):
                     elif sv_type == "DEL":
                         
                         if chrom == rec.id:
-                                    
+                            
                             mutseq = hsv.deletion(start, end, mutseq)
                             # Shift coordinates on the right of DEL region
+
                             self.sv.start = hsv.update_coords_del(
                                 start, end, self.sv.start
                             )
+
                             self.sv.end = hsv.update_coords_del(start, end, self.sv.end)
+                            
+
                             
                     else:
                         raise NotImplementedError("SV type not implemented yet.")
@@ -532,6 +537,7 @@ def slice_genome(path: str, out_path: str, slice_size: int = 1000) -> str:
 
     # Generate a mapping of all chromosome names and their sizes
     chrom_sizes = GenomeMixer.load_chromsizes(path)
+    
     # Exclude chromosomes smaller than slice_size
     rm_chroms = [ch for ch, size in chrom_sizes.items() if size < slice_size]
     for chrom in rm_chroms:
@@ -539,7 +545,7 @@ def slice_genome(path: str, out_path: str, slice_size: int = 1000) -> str:
 
     # Get list of valid chromosomes
     chrom_names = list(chrom_sizes.keys())
-    print(chrom_names)
+    
     # Pick a random region of slice_size bp in a random chromosome and write it
     picked_chrom = np.random.choice(chrom_names, size=1)[0]
     start_slice = int(

@@ -7,7 +7,9 @@ import pysam as ps
 import pathlib
 from typing import Tuple, Iterator
 
-def check_gen_sort_index(bam: "pysam.AlignmentFile", cores: int = 1) -> str:
+from os.path import join
+
+def check_gen_sort_index(bam: "ps.AlignmentFile", cores: int = 1) -> str:
     """
     Index the input BAM file if needed. If the file is not coordinate-sorted,
     generate a sorted file. Returns the path to the sorted-indexed BAM file.
@@ -115,7 +117,7 @@ def bam_region_read_ends(file: str, region: str, side: str = "both") -> np.ndarr
     
     for read in bam.fetch(chrom, start, end):
         
-        
+
         if (read.reference_start - start) >=0:
             start_arr[read.reference_start - start] += 1
 
@@ -187,3 +189,65 @@ def mean_weighted(array : np.array) -> float:
         tab = np.concatenate((tab_reverse, tab_forward))
     tab = np.exp(-(tab**2)/(2*(kernel_size**2)))
     return np.mean(tab*array)
+
+
+
+def create_features_BAM(size_img, chrom_name, binsize, RUNDIR, TMPDIR):
+
+        size_train_forest = 202
+        size_win_bp = 2
+
+        starts = np.load(join(RUNDIR, "start_reads.npy"))
+        ends = np.load(join(RUNDIR, "end_reads.npy"))
+        labels = np.load(join(RUNDIR, "y.npy"))
+
+        starts = starts[labels != 0]
+        ends = ends[labels != 0]
+
+        coordsBP = np.load(join(RUNDIR, "coordsBP.npy"))
+
+        scrambled = np.load(join(RUNDIR, "scrambled.npy"))
+        ind_beg = size_img//2
+        ind_end = len(scrambled) - size_img//2
+        valid_coords = np.where((coordsBP >= ind_beg*binsize) & (coordsBP <= ind_end*binsize))
+        coords_used = coordsBP[valid_coords]
+
+        new_labels = [1]*len(starts)
+
+        test = False
+        while test == False:
+
+            index = np.random.randint(ind_beg+2, ind_end-2)
+            test = len(np.where(coords_used//binsize == index)[0]) == 0
+
+        coords_used = list(coords_used)
+        coords_used.append(index)
+        coords_used = np.array(coords_used)
+
+        mean_start_reads = list()
+        mean_end_reads = list()
+
+        for coord in range(index*binsize, (index+1)*binsize, 10):
+            
+            c_beg = int(coord - size_train_forest//4)
+            c_end = int(coord + size_train_forest//4)
+
+
+            region = chrom_name + ":" + str(c_beg-size_win_bp//2) + "-" + str(c_end+ size_win_bp//2 + 1)
+            
+            start_reads, end_reads = bam_region_read_ends(file = join(TMPDIR, "scrambled.for.bam"), region = region, side  = "both")
+            
+
+            mean_start_reads.append((start_reads + np.concatenate((start_reads[1:], np.zeros(1))) + np.concatenate((np.zeros(1), start_reads[:len(start_reads)-1])))[1:-1]//3)
+            mean_end_reads.append((end_reads + np.concatenate((end_reads[1:], np.zeros(1))) + np.concatenate((np.zeros(1), end_reads[:len(end_reads)-1])))[1:-1]//3)
+            
+            new_labels.append(0)   
+
+        starts = np.concatenate((starts, np.array(mean_start_reads)))
+        ends = np.concatenate((ends, np.array(mean_end_reads)))
+        new_labels = np.array(new_labels)
+
+        features = np.concatenate((starts, ends), axis = 1)
+          
+        np.save(join(RUNDIR, "features.npy"), features)
+        np.save(join(RUNDIR, "labels.npy"), new_labels)
