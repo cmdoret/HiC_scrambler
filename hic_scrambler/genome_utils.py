@@ -47,10 +47,7 @@ class GenomeMixer(object):
     """
 
     def __init__(
-        self,
-        genome_path: str,
-        config_path: str,
-        config_profile: Optional[str] = None,
+        self, genome_path: str, config_path: str, config_profile: Optional[str] = None,
     ):
         self.config_path = config_path
         self.config = self.load_profile(profile=config_profile)
@@ -127,8 +124,18 @@ class GenomeMixer(object):
         all_chroms_sv = []
         for chrom, size in self.chromsizes.items():
             n_sv = round(size * self.config["SV_freq"])
-            chrom_sv = pd.DataFrame(np.empty((n_sv, 5)))
-            chrom_sv.columns = ["sv_type", "chrom", "start", "end","size"]
+            chrom_sv = pd.DataFrame(np.empty((n_sv, 9)))
+            chrom_sv.columns = [
+                "sv_type",
+                "chrom",
+                "breakpoint1",
+                "breakpoint2",
+                "breakpoint3",
+                "sgn_bp1",
+                "sgn_bp2",
+                "sgn_bp3",
+                "size",
+            ]
             sv_count = 0
             for sv_name, sv_char in self.config["SV_types"].items():
                 # multiply proportion of SV type by total SV freq desired to
@@ -143,27 +150,45 @@ class GenomeMixer(object):
                 for _ in range(n_event):
                     # Start position is random and length is picked from a normal
                     # distribution centered around mean length.
-                    start = np.random.randint(size)
-                    end = start + abs(
+                    breakpoint1 = np.random.randint(size)
+                    breakpoint2 = breakpoint1 + abs(
                         np.random.normal(
                             loc=sv_char["mean_size"], scale=sv_char["sd_size"]
                         )
                     )
+
                     # Make sure the inversion does not go beyond chromosome.
-                    end = min(size, end)
-                    
-                    chrom_sv.iloc[sv_count, :] = (sv_name, chrom, start, end, end-start)
+                    breakpoint2 = min(size, breakpoint2)
+
+                    breakpoint3 = np.random.randint(size)
+
+                    while (breakpoint3 >= breakpoint1) and (breakpoint3 <= breakpoint2):
+
+                        breakpoint3 = np.random.randint(size)
+
+                    chrom_sv.iloc[sv_count, :] = (
+                        sv_name,
+                        chrom,
+                        breakpoint1,
+                        breakpoint2,
+                        breakpoint3,
+                        "+-",
+                        "+-",
+                        "+-",
+                        breakpoint2 - breakpoint1,
+                    )
                     sv_count += 1
             all_chroms_sv.append(chrom_sv)
+
         out_sv = pd.concat(all_chroms_sv, axis=0)
-        out_sv.start, out_sv.end = (
-            out_sv.start.astype(int),
-            out_sv.end.astype(int),
+        out_sv.breakpoint1, out_sv.breakpoint2, out_sv.breakpoint3 = (
+            out_sv.breakpoint1.astype(int),
+            out_sv.breakpoint2.astype(int),
+            out_sv.breakpoint3.astype(int),
         )
         # Randomize rows in SV table to mix the order of different SV types
         out_sv = out_sv.sample(frac=1).reset_index(drop=True)
         self.sv = out_sv
-        
 
     def save_edited_genome(self, fasta_out: str):
         """
@@ -177,54 +202,151 @@ class GenomeMixer(object):
         fasta_out : str
             Path where the edited genome will be written in fasta format.
         """
-        
+        print("----------------------------------")
+        print("AT THE BEGINNING:")
+        print(self.sv)
+
         with open(fasta_out, "w") as fa_out:
             for rec in SeqIO.parse(self.genome_path, format="fasta"):
                 mutseq = Seq.MutableSeq(str(rec.seq))
+
                 for row_num in range(self.sv.shape[0]):
+
                     row = self.sv.iloc[row_num, :]
                     sv_type = row.sv_type
-                    chrom, start, end = row.chrom, int(row.start), int(row.end)
+
+                    chrom, breakpoint1, breakpoint2 = (
+                        row.chrom,
+                        int(row.breakpoint1),
+                        int(row.breakpoint2),
+                    )
                     # NOTE: Only implemented for inversions for now.
 
                     if sv_type == "INV":
-                       
+
+                        start = min(breakpoint1, breakpoint2)
+                        end = max(breakpoint1, breakpoint2)
+
                         # Reverse complement to generate inversion
                         if chrom == rec.id:
                             mutseq[start:end] = hsv.inversion(mutseq[start:end])
+
+                            sgns_bp = [
+                                self.sv.sgn_bp1[row_num],
+                                self.sv.sgn_bp2[row_num],
+                            ]
+
+                            sgn_start = sgns_bp[[breakpoint1, breakpoint2].index(start)]
+                            sgn_end = sgns_bp[[breakpoint1, breakpoint2].index(end)]
+
                             # Update coordinates of other SVs in the INV region
-                            self.sv.start = hsv.update_coords_inv(start, end, self.sv.start)
-                            self.sv.end = hsv.update_coords_inv(start, end, self.sv.end)
-                            # Make sure start is always lower than end
-                            self.sv.start, self.sv.end = hsv.swap(self.sv.start,self.sv.end)	     
-                            
+                            self.sv.breakpoint1 = hsv.update_coords_inv(
+                                start, end, self.sv.breakpoint1
+                            )
+                            self.sv.breakpoint2 = hsv.update_coords_inv(
+                                start, end, self.sv.breakpoint2
+                            )
+
+                            self.sv.breakpoint3 = hsv.update_coords_inv(
+                                start, end, self.sv.breakpoint3
+                            )
+
+                            # Update sgns
+                            self.sv.sgn_bp1 = hsv.update_sgn_inversion(
+                                start,
+                                end,
+                                sgn_start,
+                                sgn_end,
+                                self.sv.breakpoint1,
+                                self.sv.sgn_bp1,
+                            )
+
+                            self.sv.sgn_bp2 = hsv.update_sgn_inversion(
+                                start,
+                                end,
+                                sgn_start,
+                                sgn_end,
+                                self.sv.breakpoint2,
+                                self.sv.sgn_bp2,
+                            )
+
+                            self.sv.sgn_bp3 = hsv.update_sgn_inversion(
+                                start,
+                                end,
+                                sgn_start,
+                                sgn_end,
+                                self.sv.breakpoint3,
+                                self.sv.sgn_bp3,
+                            )
+
                     elif sv_type == "DEL":
-                        
+
                         if chrom == rec.id:
-                            
+
                             mutseq = hsv.deletion(start, end, mutseq)
                             # Shift coordinates on the right of DEL region
 
-                            self.sv.start = hsv.update_coords_del(
-                                start, end, self.sv.start
+                            self.sv.breakpoint1 = hsv.update_coords_del(
+                                start, end, self.sv.breakpoint1
                             )
 
-                            self.sv.end = hsv.update_coords_del(start, end, self.sv.end)
-                            
+                            self.sv.breakpoint2 = hsv.update_coords_del(
+                                start, end, self.sv.breakpoint2
+                            )
+                            self.sv.breakpoint3 = hsv.update_coords_del(
+                                start, end, self.sv.breakpoint3
+                            )
 
-                            
+                    elif sv_type == "TRA":
+
+                        breakpoint3 = row.breakpoint3
+
+                        if chrom == rec.id:
+
+                            start = breakpoint1
+                            end = breakpoint2
+                            start_paste = breakpoint3
+
+                            mutseq = hsv.translocation(start, end, start_paste, mutseq)
+
+                            # Update coordinates
+                            self.sv.breakpoint1 = hsv.update_coords_tra(
+                                start, end, start_paste, self.sv.breakpoint1
+                            )
+
+                            self.sv.breakpoint2 = hsv.update_coords_tra(
+                                start, end, start_paste, self.sv.breakpoint2
+                            )
+                            self.sv.breakpoint3 = hsv.update_coords_tra(
+                                start, end, start_paste, self.sv.breakpoint3
+                            )
+
+                            # Make sure start is always lower than end
+                            # self.sv.start, self.sv.end = hsv.swap(
+                            #    self.sv.start, self.sv.end
+                            # )
+
                     else:
                         raise NotImplementedError("SV type not implemented yet.")
-                self.sv.start = self.sv.start.astype(int)
-                self.sv.end = self.sv.end.astype(int)
+                    print("----------------------------")
+                    print(row_num)
+                    print(sv_type)
+                    print(len(mutseq))
+                    print(self.sv)
+                    print("----------------------------")
+
+                self.sv.breakpoint1 = self.sv.breakpoint1.astype(int)
+                self.sv.breakpoint2 = self.sv.breakpoint2.astype(int)
+                self.sv.breakpoint3 = self.sv.breakpoint3.astype(int)
                 # Discard SV that have been erased by others
-                self.sv = self.sv.loc[((self.sv.end - self.sv.start) > 1) | (self.sv.sv_type == "DEL"), :]
+                self.sv = self.sv.loc[
+                    (abs(self.sv.breakpoint1 - self.sv.breakpoint2) > 1)
+                    | (self.sv.sv_type == "DEL"),
+                    :,
+                ]
                 self.sv.index = pd.RangeIndex(start=0, stop=len(self.sv.index), step=1)
                 rec = SeqIO.SeqRecord(seq=mutseq, id=rec.id, description="")
-                # Trim SV with coordinates > chrom size
-                self.sv.loc[
-                    (self.sv.chrom == chrom) & (self.sv.end >= len(mutseq)), "end"
-                ] = (len(mutseq) - 1)
+
                 SeqIO.write(rec, fa_out, format="fasta")
 
 
@@ -235,21 +357,13 @@ def save_sv(sv_df: pd.DataFrame, clr: cooler.Cooler, path: str):
     introduced in the genome.
     """
     full_sv = sv_df.copy()
-    full_sv["coord_start"] = 0
-    full_sv["coord_end"] = 0
 
-    for i in range(full_sv.shape[0]):
-
-        chrom, start, end = full_sv.loc[i, ["chrom", "start", "end"]]
-        full_sv.loc[i, ["coord_start", "coord_end"]] = clr.extent(
-            f"{chrom}:{min(start, end)}-{max(start, end)}"
-        )
     full_sv.to_csv(path, sep="\t", index=False)
 
 
 def pos_to_coord(
     clr: cooler.Cooler, sv_df: pd.DataFrame
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[pd.DataFrame, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Converts start - end genomic positions from structural variations to breakpoints
     in matrix coordinates.
@@ -264,6 +378,9 @@ def pos_to_coord(
 
     Returns
     -------
+    sv_df: pd.DataFrame
+        DataFrame with rearranged columns.
+
     breakpoints : numpy.ndarray of int
         A N x 2 numpy array of numeric values representing X, Y coordinates of structural
         variations breakpoints in the matrix.
@@ -273,56 +390,66 @@ def pos_to_coord(
         A N x 1 numpy array of numeric values representing position of breakpoints in the BP.
     Chrom : numpy.ndarray of str
         A N x 1 numpy array of chrom for each position.    
-    coordisstartend : numpy.ndarray of int
-        A N x 1 numpy array to know if coord is for the start of the SV or for the end.  
+    index_TRA: numpy.ndarray of int
+        A N x 1 numpy array. If posBP[i] correspond to a translocation,  index_tra[i] = 1.
+        Otherwise, index_tra[i] = 0.
     """
     # Get coordinates to match binning
     res = clr.binsize
-    coordBPstart = np.copy(sv_df.start.values)
-    coordisstart = np.zeros(len(coordBPstart))
 
-    coordBPend = np.copy(sv_df[sv_df["sv_type"] != "DEL"].end.values)
-    coordisend = np.ones(len(coordBPend))
-    
-    sv_df.start = (sv_df.start // res) * res
-    sv_df.end = (sv_df.end // res) * res
-    # Put start and end in the same column, 1 row / breakpoint
-    s_df = sv_df.loc[:, ["sv_type", "chrom", "start"]]
-    s_df.rename(index=str, columns={"start": "pos"}, inplace=True)
-    e_df = sv_df.loc[:, ["sv_type", "chrom", "end"]]
-    e_df = e_df[e_df["sv_type"] != "DEL"]
-    e_df.rename(index=str, columns={"end": "pos"}, inplace=True)
-    sv_df = pd.concat([s_df, e_df]).reset_index(drop=True)
     # Assign matrix coordinate (fragment index) to each breakpoint
-    bins = clr.bins()[:]
-    bins["coord"] = bins.index
-    sv_frags = sv_df.merge(
-        bins,
-        left_on=["chrom", "pos"],
-        right_on=["chrom", "start"],
-        how="left",
-    )
-    breakpoints = np.vstack([sv_frags.coord, sv_frags.coord]).T
-    breakpoints.astype(int)
-    labels = np.array(sv_frags.sv_type.tolist())
-    pos_BP = np.concatenate((coordBPstart, coordBPend))
-    coordisstartend = np.concatenate((coordisstart, coordisend))
-    chroms = sv_frags.chrom.values
+    sv_df["coord_bp1"] = sv_df.breakpoint1 // res
+    sv_df["coord_bp2"] = sv_df.breakpoint2 // res
+    sv_df["coord_bp3"] = sv_df.breakpoint3 // res
 
-    return breakpoints, labels, pos_BP, chroms, coordisstartend
+    breakpoints = np.vstack([sv_df.coord_bp1.values, sv_df.coord_bp2.values]).T
+    breakpoints.astype(int)
+    labels = np.array(sv_df.sv_type.tolist())
+
+    posBP1 = sv_df.breakpoint1.values
+    posBP2 = sv_df.breakpoint2.values
+    posBP3 = sv_df[sv_df["sv_type"] == "TRA"].breakpoint3.values
+    pos_BP = np.concatenate((posBP1, posBP2, posBP3))
+
+    index_TRA = np.concatenate(
+        (
+            (sv_df["sv_type"] == "TRA").values * 1,
+            (sv_df["sv_type"] == "TRA").values * 1,
+            np.ones(len(posBP3)),
+        ),
+    )
+
+    chroms = sv_df.chrom.values
+
+    cols = [
+        "sv_type",
+        "chrom",
+        "breakpoint1",
+        "breakpoint2",
+        "breakpoint3",
+        "coord_bp1",
+        "coord_bp2",
+        "coord_bp3",
+        "sgn_bp1",
+        "sgn_bp2",
+        "sgn_bp3",
+        "size",
+    ]
+    sv_df = sv_df[cols]
+
+    return sv_df, breakpoints, labels, pos_BP, chroms, index_TRA
 
 
 def subset_mat(
     clr: cooler.Cooler,
     coords: np.ndarray,
-    coordsBP : np.ndarray,
-    coordisstartend : np.ndarray,
+    coordsBP: np.ndarray,
     labels: np.ndarray,
     chroms: np.ndarray,
     win_size: int,
     binsize: int,
-    rundir : str,
-    tmpdir : str,
+    rundir: str,
+    tmpdir: str,
     prop_negative: float = 0.5,
     pixel_tolerance: int = 3,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -340,8 +467,6 @@ def subset_mat(
         Pairs of coordinates for which subsets should be generated. A window
         centered around each of these coordinates will be sampled. Dimensions
         are [N, 2].
-    coordsistartend : numpy.ndarry of ints
-        To know if it is a coordinate for the beginning or the end of an SV.
     labels : numpy.ndarray of ints
         labels of for SVs
     win_size : int
@@ -383,39 +508,36 @@ def subset_mat(
     h, w = clr.shape
     i_w = int(h - win_size // 2)
     j_w = int(w - win_size // 2)
-    sv_to_int = {"INV": 1, "DEL": 2, "INS": 3}
+    sv_to_int = {"INV": 1, "DEL": 2, "TRA": 3}
     size_train = 100
     size_win_bp = 2
     # Only keep coords far enough from borders of the matrix
-    
+
     valid_coords = np.where(
         (coords[:, 0] > int(win_size / 2))
         & (coords[:, 1] > int(win_size / 2))
         & (coords[:, 0] < i_w)
         & (coords[:, 1] < j_w)
     )[0]
-    
+
     coords = coords[valid_coords, :]
 
     labels = labels[valid_coords]
     coordsBP = coordsBP[valid_coords]
     chroms = chroms[valid_coords]
-    coordisstartend = coordisstartend[valid_coords]
 
-    np.save(rundir + "/is_start_end.npy", coordisstartend)
     np.save(rundir + "/coordsBP.npy", coordsBP)
-    
+
     # Number of windows to generate (including negative windows)
     n_windows = int(coords.shape[0] // (1 - prop_negative))
     x = np.zeros((n_windows, win_size, win_size), dtype=np.float64)
     y = np.zeros(n_windows, dtype=np.int64)
-    coords_windows =  np.zeros((n_windows, size_train+1), dtype = np.int64)
-    percents_GC = np.zeros((n_windows, size_train+1), dtype = np.float64)
-    start_reads = np.zeros((n_windows, size_train+1), dtype = np.int64)
-    end_reads = np.zeros((n_windows, size_train+1), dtype = np.int64)
-    n_reads = np.zeros((n_windows, size_train+1), dtype = np.int64)
-    complexity = np.zeros((n_windows, size_train+1), dtype = np.int64)
-    
+    coords_windows = np.zeros((n_windows, size_train + 1), dtype=np.int64)
+    percents_GC = np.zeros((n_windows, size_train + 1), dtype=np.float64)
+    start_reads = np.zeros((n_windows, size_train + 1), dtype=np.int64)
+    end_reads = np.zeros((n_windows, size_train + 1), dtype=np.int64)
+    n_reads = np.zeros((n_windows, size_train + 1), dtype=np.int64)
+    complexity = np.zeros((n_windows, size_train + 1), dtype=np.int64)
 
     if win_size >= min(h, w):
         print("Window size must be smaller than the Hi-C matrix.")
@@ -428,36 +550,58 @@ def subset_mat(
         c = coords[i, :]
         try:
             win = clr.matrix(sparse=False, balance=False)[
-                (c[0] - halfw) : (c[0] + halfw),
-                (c[1] - halfw) : (c[1] + halfw),
+                (c[0] - halfw) : (c[0] + halfw), (c[1] - halfw) : (c[1] + halfw),
             ]
         except TypeError:
             breakpoint()
         x[i, :, :] = win
         y[i] = sv_to_int[labels[i]]
 
-        c_beg = coordsBP[i] - size_train//2
-        c_end = coordsBP[i] + size_train//2 
-        
+        c_beg = coordsBP[i] - size_train // 2
+        c_end = coordsBP[i] + size_train // 2
 
         for c_ in range(c_beg, c_end):
-            
-            coords_windows[i,c_ - c_beg] = c_
-            seq = gcp.load_seq(rundir + "/mod_genome.fa", chroms[i],c_-size_win_bp//2, c_ + size_win_bp//2 + 1)
-            percents_GC[i, c_-c_beg] = gcp.percent_GC(seq)
-            complexity[i, c_- c_beg] = cf.lempel_complexity(seq)
-        
-        region = chroms[i] + ":" + str(c_beg-size_win_bp//2) + "-" + str(c_end+ size_win_bp//2 + 1)
-        
-        start_read, end_read = bm.bam_region_read_ends(file = tmpdir + "/scrambled.for.bam", region = region, side  = "both")
-        n_read = bm.bam_region_coverage(file = tmpdir +  "/scrambled.for.bam", region = region)
-        
 
-        start_reads[i] = (start_read + np.concatenate((start_read[1:], np.zeros(1))) + np.concatenate((np.zeros(1), start_read[:len(start_read)-1])))[1:-1]//3
-        end_reads[i] = (end_read + np.concatenate((end_read[1:], np.zeros(1))) + np.concatenate((np.zeros(1), end_read[:len(end_read)-1])))[1:-1]//3
-        n_reads[i] = (n_read + np.concatenate((n_read[1:], np.zeros(1))) + np.concatenate((np.zeros(1), n_read[:len(n_read)-1])))[1:-1]//3
+            coords_windows[i, c_ - c_beg] = c_
+            seq = gcp.load_seq(
+                rundir + "/mod_genome.fa",
+                chroms[i],
+                c_ - size_win_bp // 2,
+                c_ + size_win_bp // 2 + 1,
+            )
+            percents_GC[i, c_ - c_beg] = gcp.percent_GC(seq)
+            complexity[i, c_ - c_beg] = cf.lempel_complexity(seq)
 
-        
+        region = (
+            chroms[i]
+            + ":"
+            + str(c_beg - size_win_bp // 2)
+            + "-"
+            + str(c_end + size_win_bp // 2 + 1)
+        )
+
+        start_read, end_read = bm.bam_region_read_ends(
+            file=tmpdir + "/scrambled.for.bam", region=region, side="both"
+        )
+        n_read = bm.bam_region_coverage(
+            file=tmpdir + "/scrambled.for.bam", region=region
+        )
+
+        start_reads[i] = (
+            start_read
+            + np.concatenate((start_read[1:], np.zeros(1)))
+            + np.concatenate((np.zeros(1), start_read[: len(start_read) - 1]))
+        )[1:-1] // 3
+        end_reads[i] = (
+            end_read
+            + np.concatenate((end_read[1:], np.zeros(1)))
+            + np.concatenate((np.zeros(1), end_read[: len(end_read) - 1]))
+        )[1:-1] // 3
+        n_reads[i] = (
+            n_read
+            + np.concatenate((n_read[1:], np.zeros(1)))
+            + np.concatenate((np.zeros(1), n_read[: len(n_read) - 1]))
+        )[1:-1] // 3
 
     # Getting negative windows
     neg_coords = set()
@@ -482,37 +626,63 @@ def subset_mat(
         y[i] = 0
         x = x.astype(int)
 
-        c_beg = c*binsize - size_train//2
-        c_end = c*binsize + size_train//2 
-
-        
+        c_beg = c * binsize - size_train // 2
+        c_end = c * binsize + size_train // 2
 
         ind_chroms = np.random.randint(len(chroms))
         for c_ in range(c_beg, c_end):
 
-            
-            coords_windows[i,c_ - c_beg] = c_
-            seq = gcp.load_seq(rundir + "/mod_genome.fa", chroms[ind_chroms],c_-size_win_bp//2, c_ + size_win_bp//2 + 1)
-            percents_GC[i, c_-c_beg] = gcp.percent_GC(seq)
-            complexity[i, c_- c_beg] = cf.lempel_complexity(seq)
+            coords_windows[i, c_ - c_beg] = c_
+            seq = gcp.load_seq(
+                rundir + "/mod_genome.fa",
+                chroms[ind_chroms],
+                c_ - size_win_bp // 2,
+                c_ + size_win_bp // 2 + 1,
+            )
+            percents_GC[i, c_ - c_beg] = gcp.percent_GC(seq)
+            complexity[i, c_ - c_beg] = cf.lempel_complexity(seq)
 
-        region = chroms[ind_chroms] + ":" + str(c_beg-size_win_bp//2) + "-" + str(c_end+ size_win_bp//2 + 1)
-        
-        start_read, end_read = bm.bam_region_read_ends(file = tmpdir + "/scrambled.for.bam", region = region, side  = "both")
-        n_read = bm.bam_region_coverage(file = tmpdir +  "/scrambled.for.bam", region = region)
+        region = (
+            chroms[ind_chroms]
+            + ":"
+            + str(c_beg - size_win_bp // 2)
+            + "-"
+            + str(c_end + size_win_bp // 2 + 1)
+        )
 
-        start_reads[i] = (start_read + np.concatenate((start_read[1:], np.zeros(1))) + np.concatenate((np.zeros(1), start_read[:len(start_read)-1])))[1:-1]//3
-        end_reads[i] = (end_read + np.concatenate((end_read[1:], np.zeros(1))) + np.concatenate((np.zeros(1), end_read[:len(end_read)-1])))[1:-1]//3
-        n_reads[i] = (n_read + np.concatenate((n_read[1:], np.zeros(1))) + np.concatenate((np.zeros(1), n_read[:len(n_read)-1])))[1:-1]//3
+        start_read, end_read = bm.bam_region_read_ends(
+            file=tmpdir + "/scrambled.for.bam", region=region, side="both"
+        )
+        n_read = bm.bam_region_coverage(
+            file=tmpdir + "/scrambled.for.bam", region=region
+        )
 
-    
+        start_reads[i] = (
+            start_read
+            + np.concatenate((start_read[1:], np.zeros(1)))
+            + np.concatenate((np.zeros(1), start_read[: len(start_read) - 1]))
+        )[1:-1] // 3
+        end_reads[i] = (
+            end_read
+            + np.concatenate((end_read[1:], np.zeros(1)))
+            + np.concatenate((np.zeros(1), end_read[: len(end_read) - 1]))
+        )[1:-1] // 3
+        n_reads[i] = (
+            n_read
+            + np.concatenate((n_read[1:], np.zeros(1)))
+            + np.concatenate((np.zeros(1), n_read[: len(n_read) - 1]))
+        )[1:-1] // 3
 
-
-
-
-    
-
-    return x, y, percents_GC, start_reads, end_reads, n_reads, coords_windows, complexity
+    return (
+        x,
+        y,
+        percents_GC,
+        start_reads,
+        end_reads,
+        n_reads,
+        coords_windows,
+        complexity,
+    )
 
 
 def slice_genome(path: str, out_path: str, slice_size: int = 1000) -> str:
@@ -537,7 +707,7 @@ def slice_genome(path: str, out_path: str, slice_size: int = 1000) -> str:
 
     # Generate a mapping of all chromosome names and their sizes
     chrom_sizes = GenomeMixer.load_chromsizes(path)
-    
+
     # Exclude chromosomes smaller than slice_size
     rm_chroms = [ch for ch, size in chrom_sizes.items() if size < slice_size]
     for chrom in rm_chroms:
@@ -545,7 +715,7 @@ def slice_genome(path: str, out_path: str, slice_size: int = 1000) -> str:
 
     # Get list of valid chromosomes
     chrom_names = list(chrom_sizes.keys())
-    
+
     # Pick a random region of slice_size bp in a random chromosome and write it
     picked_chrom = np.random.choice(chrom_names, size=1)[0]
     start_slice = int(

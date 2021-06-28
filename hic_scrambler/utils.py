@@ -1,9 +1,10 @@
 # Functions which are important in order to create features
 
 import numpy as np
-import BAM_functions as bm
-from RepeatsFinder import RepeatsFinder
-np.seterr(divide = 'ignore') 
+import pandas as pd
+
+np.seterr(divide="ignore")
+
 
 def count_0(matrix):
     """
@@ -12,7 +13,7 @@ def count_0(matrix):
     counts = np.zeros(matrix.shape[0])
     for k in range(0, matrix.shape[0]):
 
-        row = matrix[k,:]
+        row = matrix[k, :]
         counts[k] = len(np.where(row == 0)[0])
     return counts
 
@@ -25,128 +26,47 @@ def white_index(matrix):
     percent = 0.9
 
     counts = count_0(matrix)
-    
-    return np.where(counts >= size_mat*percent)[0]
+
+    return np.where(counts >= size_mat * percent)[0]
 
 
-def create_features(path : str, chrom : str):
+def sv_dataframe_modification(sv_dataframe: pd.DataFrame) -> pd.DataFrame:
     """
-    Create features in order to make the detection of the exact position of a SV. Firstly it creates features
-    of coords where there is SVs. After that it will creates a lot of features of coords where there is no SVs.
-
-    Parameters
-    ----------
-    path : str
-        Path where all the informations created before are. It will use them to create the features.
-    chrom : str
-        Chromosome where modifications have been done.
-        
-    Returns
-    -------
-    bool :
-        Returns a boolean. True if it is a repeat, False it is not. 
+    Modify dataframe because some informations are not complete or exactly correct (INS, DEL...).
     """
-    size_train_forest = 15
-    size_win_bp = 2
-    binsize = 2000
 
-    RFinder = RepeatsFinder()
+    # BP3 useless for sv which are not TRA
+    indices_not_tra = sv_dataframe["sv_type"] != "TRA"
 
-    starts = np.load(path + "/start_reads.npy")
-    ends = np.load(path + "/end_reads.npy")
-    labels = np.load(path + "/y.npy")
+    bp3 = sv_dataframe["breakpoint3"].values
+    coord_bp3 = sv_dataframe["coord_bp3"].values
 
-    starts = starts[labels != 0]
-    ends = ends[labels != 0]
+    bp3[indices_not_tra] = -1
+    coord_bp3[indices_not_tra] = -1
 
-    coordsBP = np.load(path + "/coordsBP.npy")
+    sv_dataframe["breakpoint3"] = bp3
+    sv_dataframe["coord_bp3"] = coord_bp3
 
+    ### Modication name of sv_type
+    sv_types = sv_dataframe["sv_type"].values
 
-    scrambled = np.load(path + "/scrambled.npy")
-    scrambled = np.log10(scrambled)
-    scrambled[scrambled == -np.inf] = 0
+    # Our DEL are INS
+    indices_DEL = sv_dataframe["sv_type"] == "DEL"
 
-    white_inds = white_index(scrambled)
+    # Specify if it is a Back or a Forward translocation
+    indices_back = (sv_dataframe["sv_type"] == "TRA") & (
+        sv_dataframe["breakpoint2"] >= sv_dataframe["breakpoint1"]
+    )  # breakpoint1 = position of the beginning of the sequence translocated, breakpoint3 = position where the sequence will be translocated
+    # (back and forward are inversed like DEL and INS)
 
-    ind_beg = 64
-    ind_end = len(scrambled) - 64
-    
-    valid_coords = np.where((coordsBP >= ind_beg*binsize) & (coordsBP <= ind_end*binsize))
-    coords_used = coordsBP[valid_coords]
+    indices_forward = (sv_dataframe["sv_type"] == "TRA") & (
+        sv_dataframe["breakpoint2"] < sv_dataframe["breakpoint1"]
+    )
 
-    mean_start_reads = list()
-    mean_end_reads = list()
-    coverages = list()
-    repeats = list()
-    labels = list()
+    sv_types[indices_DEL] = "DEL"
+    sv_types[indices_back] = "TRA_back"
+    sv_types[indices_forward] = "TRA_forward"
 
-    for coord in coords_used:
-        c_beg = int(coord - size_train_forest//2)
-        c_end = int(coord + size_train_forest//2)
+    sv_dataframe["sv_type"] = sv_types
 
-        
-        region = chrom + ":" + str(c_beg-size_win_bp//2) + "-" + str(c_end+ size_win_bp//2 + 1)
-
-        start_reads, end_reads = bm.bam_region_read_ends(file = path + "/scrambled.for.bam", region = region, side  = "both")
-        coverage = bm.bam_region_coverage(file = path + "/scrambled.for.bam", region = region)
-
-        mean_start_reads_inter = (start_reads + np.concatenate((start_reads[1:], np.zeros(1))) + np.concatenate((np.zeros(1), start_reads[:len(start_reads)-1])))[1:-1]//3
-
-        mean_end_reads_inter = (end_reads + np.concatenate((end_reads[1:], np.zeros(1))) + np.concatenate((np.zeros(1), end_reads[:len(end_reads)-1])))[1:-1]//3
-                
-
-
-
-        mean_start_reads.append((mean_start_reads_inter - np.concatenate((mean_start_reads_inter[1:], np.zeros(1))))[:len(mean_start_reads_inter)-1])
-        mean_end_reads.append((mean_end_reads_inter- np.concatenate((mean_end_reads_inter[1:], np.zeros(1))))[:len(mean_end_reads_inter)-1])
-        coverages.append(coverage)
-
-        repeats.append(RFinder.predict(coord, path, chrom, verbose = False))
-        labels.append(1)
-
-    
-    coords_used = coords_used//binsize
-    coords_used = np.concatenate((coords_used, white_inds))
-
-    test = False
-    while test == False:
-
-        index = np.random.randint(ind_beg+2, ind_end-2)
-        test = len(np.where(coords_used//binsize == index)[0]) == 0
-
-    coords_used = list(coords_used)
-    coords_used.append(index)
-    coords_used = np.array(coords_used)
-
-    
-
-    for coord in range(index*binsize, (index+1)*binsize, 10):
-        
-        c_beg = int(coord - size_train_forest//2)
-        c_end = int(coord + size_train_forest//2)
-
-
-        region = chrom + ":" + str(c_beg-size_win_bp//2) + "-" + str(c_end+ size_win_bp//2 + 1)
-        
-        start_reads, end_reads = bm.bam_region_read_ends(file = path + "/scrambled.for.bam", region = region, side  = "both")
-        coverage = bm.bam_region_coverage(file = path + "/scrambled.for.bam", region = region)
-
-        mean_start_reads_inter = (start_reads + np.concatenate((start_reads[1:], np.zeros(1))) + np.concatenate((np.zeros(1), start_reads[:len(start_reads)-1])))[1:-1]//3
-
-        mean_end_reads_inter = (end_reads + np.concatenate((end_reads[1:], np.zeros(1))) + np.concatenate((np.zeros(1), end_reads[:len(end_reads)-1])))[1:-1]//3
-
-
-        mean_start_reads.append((mean_start_reads_inter - np.concatenate((mean_start_reads_inter[1:], np.zeros(1))))[:len(mean_start_reads_inter)-1])
-        mean_end_reads.append((mean_end_reads_inter- np.concatenate((mean_end_reads_inter[1:], np.zeros(1))))[:len(mean_end_reads_inter)-1])
-
-        coverages.append(coverage)
-
-        labels.append(0)
-        repeats.append(RFinder.predict(coord, path, chrom, verbose = False))
-           
-    repeats = np.array(repeats).reshape((-1,1))
-    mean_start_reads = np.array(mean_start_reads)
-    mean_end_reads = np.array(mean_end_reads)
-    coverages = np.array(coverages)
-
-    return mean_start_reads, mean_end_reads, labels, repeats, coverages
+    return sv_dataframe

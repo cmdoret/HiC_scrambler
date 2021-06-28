@@ -5,13 +5,13 @@ GENOME="./data/genome/genome.fa"
 .PHONY: clean demo test deps setup
 
 clean:
-	rm -rf out_1 out_2 tmp_1 tmp_2
+	rm -rf demo_out demo_tmp
 
 test:
 	pytest --doctest-modules
 
 demo: clean
-	python ./hic_scrambler/input_generator.py -1 $(READS1) -2 $(READS2) -t ./demo_tmp -n 2 $(GENOME) ./demo_out
+	python ./hic_scrambler/input_generator.py -1 $(READS1) -2 $(READS2) -t ./demo_tmp -n 10 $(GENOME) ./demo_out
 
 train:
 	python ./hic_scrambler/train.py
