@@ -17,23 +17,23 @@
         }
     },
     "Yeast": {
-        "SV_freq": 0.000005,
+        "SV_freq": 0.000006,
         "SV_types": {
             "INV": {
-                "prop": 0.85,
+                "prop": 0.7,
                 "mean_size": 100000,
                 "sd_size": 40000,
                 "code": 1
             },
             "DEL": {
-                "prop": 0,
-                "mean_size": 100000,
-                "sd_size": 40000,
+                "prop": 0.2,
+                "mean_size": 50000,
+                "sd_size": 10000,
                 "code": 2
             },
             
             "TRA": {
-                "prop": 0.15,
+                "prop": 0.1,
                 "mean_size": 50000,
                 "sd_size": 10000,
                 "code": 3
