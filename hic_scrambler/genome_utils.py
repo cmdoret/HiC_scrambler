@@ -387,7 +387,7 @@ def pos_to_coord(
     labels : numpy.ndarray of str
         An N X 1 array of labels corresponding to SV type.
     pos_BP : numpy.ndarray of int
-        A N x 1 numpy array of numeric values representing position of breakpoints in the BP.
+        A N x 2 numpy array of numeric values representing position of breakpoints in the BP.
     Chrom : numpy.ndarray of str
         A N x 1 numpy array of chrom for each position.    
     index_TRA: numpy.ndarray of int
@@ -409,7 +409,7 @@ def pos_to_coord(
     posBP1 = sv_df.breakpoint1.values
     posBP2 = sv_df.breakpoint2.values
     posBP3 = sv_df[sv_df["sv_type"] == "TRA"].breakpoint3.values
-    pos_BP = np.concatenate((posBP1, posBP2, posBP3))
+    pos_BP = np.array([posBP1, posBP2]).T
 
     index_TRA = np.concatenate(
         (
@@ -522,8 +522,12 @@ def subset_mat(
 
     coords = coords[valid_coords, :]
 
+    coords = coords.reshape(
+        (-1, 1)
+    )  # Allow to have an image at the beginning and at the end of the sv
+
     labels = labels[valid_coords]
-    coordsBP = coordsBP[valid_coords]
+    coordsBP = coordsBP[valid_coords, :]
     chroms = chroms[valid_coords]
 
     np.save(rundir + "/coordsBP.npy", coordsBP)
@@ -546,19 +550,21 @@ def subset_mat(
     coords = coords.astype(int)
     for i in range(coords.shape[0]):
         print(i)
-        print(coordsBP[i])
-        c = coords[i, :]
+        print(
+            coordsBP[i, 0]
+        )  # We will create the features only for the first coord (no reason to do that).
+        c = coords[i]
         try:
             win = clr.matrix(sparse=False, balance=False)[
-                (c[0] - halfw) : (c[0] + halfw), (c[1] - halfw) : (c[1] + halfw),
+                (c[0] - halfw) : (c[0] + halfw), (c[0] - halfw) : (c[0] + halfw),
             ]
         except TypeError:
             breakpoint()
         x[i, :, :] = win
         y[i] = sv_to_int[labels[i]]
 
-        c_beg = coordsBP[i] - size_train // 2
-        c_end = coordsBP[i] + size_train // 2
+        c_beg = coordsBP[i, 0] - size_train // 2
+        c_end = coordsBP[i, 0] + size_train // 2
 
         for c_ in range(c_beg, c_end):
 

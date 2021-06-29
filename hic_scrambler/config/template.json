@@ -17,7 +17,7 @@
         }
     },
     "Yeast": {
-        "SV_freq": 0.000008,
+        "SV_freq": 0.000005,
         "SV_types": {
             "INV": {
                 "prop": 0.85,

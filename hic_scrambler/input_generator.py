@@ -117,6 +117,7 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         mixer.sv, breakpoints, labels, coords_BP, chroms, index_TRA = gu.pos_to_coord(
             clr_mod, mixer.sv
         )
+
         np.save(join(rundir, "is_tra.npy"), index_TRA)
 
         size_img = 128

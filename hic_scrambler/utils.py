@@ -53,19 +53,8 @@ def sv_dataframe_modification(sv_dataframe: pd.DataFrame) -> pd.DataFrame:
     # Our DEL are INS
     indices_DEL = sv_dataframe["sv_type"] == "DEL"
 
-    # Specify if it is a Back or a Forward translocation
-    indices_back = (sv_dataframe["sv_type"] == "TRA") & (
-        sv_dataframe["breakpoint2"] >= sv_dataframe["breakpoint1"]
-    )  # breakpoint1 = position of the beginning of the sequence translocated, breakpoint3 = position where the sequence will be translocated
-    # (back and forward are inversed like DEL and INS)
-
-    indices_forward = (sv_dataframe["sv_type"] == "TRA") & (
-        sv_dataframe["breakpoint2"] < sv_dataframe["breakpoint1"]
-    )
-
     sv_types[indices_DEL] = "DEL"
-    sv_types[indices_back] = "TRA_back"
-    sv_types[indices_forward] = "TRA_forward"
+
 
     sv_dataframe["sv_type"] = sv_types
 
