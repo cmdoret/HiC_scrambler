@@ -70,7 +70,7 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
     #    no_cleanup = False
     # )
     # clr_ori = cooler.Cooler(join(outdir, "original.cool"))
-    slice_bins = 750
+    slice_bins = 700
 
     # Make edited genomes. Each edited genome will start from a subset of the
     # original (full) genome.
@@ -117,6 +117,7 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         mixer.sv, breakpoints, labels, coords_BP, chroms, index_TRA = gu.pos_to_coord(
             clr_mod, mixer.sv
         )
+
         np.save(join(rundir, "is_tra.npy"), index_TRA)
 
         size_img = 128
@@ -140,7 +141,6 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
             binsize=binsize,
             rundir=rundir,
             tmpdir=tmpdir,
-            prop_negative=0.33,
         )
 
         # Save whole slice map (after SV)
@@ -154,8 +154,8 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         )
 
         # Save all corresponding Hi-C windows and associated label (SV type) to a file
-        np.save(join(rundir, "x.npy"), X)
-        np.save(join(rundir, "y.npy"), Y)
+        np.save(join(rundir, "features_hic.npy"), X)
+        np.save(join(rundir, "labels_hic.npy"), Y)
         np.save(join(rundir, "percents.npy"), PERCENTSGC)
         np.save(join(rundir, "start_reads.npy"), STARTREADS)
         np.save(join(rundir, "end_reads.npy"), ENDREADS)
@@ -171,9 +171,9 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         mixer.sv = sv_dataframe_modification(mixer.sv)
         gu.save_sv(mixer.sv, clr_mod, join(rundir, "breakpoints.tsv"))
 
-        shutil.move(
-            join(tmpdir, "scrambled.for.bam"), join(rundir, "scrambled.for.bam")
-        )
+        # shutil.move(
+        #    join(tmpdir, "scrambled.for.bam"), join(rundir, "scrambled.for.bam")
+        # )
 
         file_list = [f for f in glob.glob(tmpdir + "/*")]
 
@@ -186,15 +186,15 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
     # Helper function to concatenate piles of images
     conc = lambda base: np.concatenate([np.load(base.format(i)) for i in range(nruns)])
 
-    feats_hic = conc(join(outdir, "RUN_{}", "x.npy"))
-    labs_hic = conc(join(outdir, "RUN_{}", "y.npy"))
-    np.save(join(outdir, "x.npy"), feats_hic)
-    np.save(join(outdir, "y.npy"), labs_hic)
+    feats_hic = conc(join(outdir, "RUN_{}", "features_hic.npy"))
+    labs_hic = conc(join(outdir, "RUN_{}", "labels_hic.npy"))
+    np.save(join(outdir, "features_hic.npy"), feats_hic)
+    np.save(join(outdir, "features_hic.npy"), labs_hic)
 
-    feats_BAM = conc(join(outdir, "RUN_{}", "features.npy"))
-    labs_BAM = conc(join(outdir, "RUN_{}", "labels.npy"))
-    np.save(join(outdir, "features.npy"), feats_BAM)
-    np.save(join(outdir, "labels.npy"), labs_BAM)
+    feats_BAM = conc(join(outdir, "RUN_{}", "features_BAM.npy"))
+    labs_BAM = conc(join(outdir, "RUN_{}", "labels_BAM.npy"))
+    np.save(join(outdir, "features_BAM.npy"), feats_BAM)
+    np.save(join(outdir, "labels_BAM.npy"), labs_BAM)
 
     # Helper function to pad individual images to the same size and stack them
     # NOTE: Padding is required because we introduced deletions.

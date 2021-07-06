@@ -16,6 +16,8 @@ import hic_scrambler.BAM_functions as bm
 import hic_scrambler.GCpercent_functions as gcp
 import hic_scrambler.complexity_function as cf
 
+from hic_scrambler.utils import imgs_norm_creater
+
 
 class GenomeMixer(object):
     """
@@ -203,6 +205,15 @@ class GenomeMixer(object):
         fasta_out : str
             Path where the edited genome will be written in fasta format.
         """
+
+        index_bp1 = 2
+        index_bp2 = 3
+        index_bp3 = 4
+
+        index_sgn_bp1 = 5
+        index_sgn_bp2 = 6
+        index_sgn_bp3 = 7
+
         print("----------------------------------")
         print("AT THE BEGINNING:")
         print(self.sv)
@@ -216,12 +227,48 @@ class GenomeMixer(object):
                     row = self.sv.iloc[row_num, :]
                     sv_type = row.sv_type
 
-                    chrom, breakpoint1, breakpoint2 = (
+                    chrom, breakpoint1, breakpoint2, breakpoint3 = (
                         row.chrom,
                         int(row.breakpoint1),
                         int(row.breakpoint2),
+                        int(row.breakpoint3),
                     )
                     # NOTE: Only implemented for inversions for now.
+
+                    #  "All breakpoints" are all the breakpoints for svs which have been applied
+                    all_breakpoints = np.concatenate(
+                        (
+                            self.sv.breakpoint1.values[0:row_num],
+                            self.sv.breakpoint2.values[0:row_num],
+                            self.sv.breakpoint3.values[0:row_num],
+                        )
+                    )
+
+                    all_sgns = np.concatenate(
+                        (
+                            self.sv.sgn_bp1.values[0:row_num],
+                            self.sv.sgn_bp2.values[0:row_num],
+                            self.sv.sgn_bp3.values[0:row_num],
+                        )
+                    )
+
+                    sgns_bp = (
+                        list()
+                    )  #  Find the sign of each breakpoint (because fragments are differents).
+                    sgns_bp.append(
+                        hsv.find_sgns(breakpoint1, all_breakpoints, all_sgns,)
+                    )
+                    sgns_bp.append(
+                        hsv.find_sgns(breakpoint2, all_breakpoints, all_sgns,)
+                    )
+                    sgns_bp.append(
+                        hsv.find_sgns(breakpoint3, all_breakpoints, all_sgns,)
+                    )
+                    print(sgns_bp)
+
+                    self.sv.iloc[row_num, index_sgn_bp1] = sgns_bp[0]
+                    self.sv.iloc[row_num, index_sgn_bp2] = sgns_bp[1]
+                    self.sv.iloc[row_num, index_sgn_bp3] = sgns_bp[2]
 
                     if sv_type == "INV":
 
@@ -232,13 +279,6 @@ class GenomeMixer(object):
                         if chrom == rec.id:
                             mutseq[start:end] = hsv.inversion(mutseq[start:end])
 
-                            sgns_bp = [
-                                self.sv.sgn_bp1[
-                                    row_num
-                                ],  # [0:row_num] because only modify for sv breakpoints which have not been applied.
-                                self.sv.sgn_bp2[row_num],
-                            ]
-
                             sgn_start = sgns_bp[[breakpoint1, breakpoint2].index(start)]
                             sgn_end = sgns_bp[[breakpoint1, breakpoint2].index(end)]
 
@@ -247,56 +287,85 @@ class GenomeMixer(object):
                             self.sv.breakpoint1[
                                 0 : row_num + 1
                             ] = hsv.update_coords_inv(
-                                start, end, self.sv.breakpoint1[0 : row_num + 1]
+                                start,
+                                end,
+                                self.sv.breakpoint1[
+                                    0 : row_num + 1
+                                ],  # [0:row_num +1] because only modify for sv breakpoints which have not been applied.
                             )
                             self.sv.breakpoint2[
                                 0 : row_num + 1
                             ] = hsv.update_coords_inv(
-                                start, end, self.sv.breakpoint2[0 : row_num + 1]
+                                start,
+                                end,
+                                self.sv.breakpoint2[
+                                    0 : row_num + 1
+                                ],  # [0:row_num +1] because only modify for sv breakpoints which have not been applied.
                             )
 
                             self.sv.breakpoint3[
                                 0 : row_num + 1
                             ] = hsv.update_coords_inv(
-                                start, end, self.sv.breakpoint3[0 : row_num + 1]
+                                start,
+                                end,
+                                self.sv.breakpoint3[
+                                    0 : row_num + 1
+                                ],  # [0:row_num +1] because only modify for sv breakpoints which have not been applied.
                             )
 
                             # Update sgns
-                            self.sv.sgn_bp1 = hsv.update_sgn_inversion(
+                            self.sv.sgn_bp1[0 : row_num + 1] = hsv.update_sgn_inversion(
                                 start,
                                 end,
                                 sgn_start,
                                 sgn_end,
-                                self.sv.breakpoint1,
-                                self.sv.sgn_bp1,
+                                self.sv.breakpoint1[0 : row_num + 1],
+                                self.sv.sgn_bp1[0 : row_num + 1],
                             )
 
-                            self.sv.sgn_bp2 = hsv.update_sgn_inversion(
+                            self.sv.sgn_bp2[0 : row_num + 1] = hsv.update_sgn_inversion(
                                 start,
                                 end,
                                 sgn_start,
                                 sgn_end,
-                                self.sv.breakpoint2,
-                                self.sv.sgn_bp2,
+                                self.sv.breakpoint2[0 : row_num + 1],
+                                self.sv.sgn_bp2[0 : row_num + 1],
                             )
 
-                            self.sv.sgn_bp3 = hsv.update_sgn_inversion(
+                            self.sv.sgn_bp3[0 : row_num + 1] = hsv.update_sgn_inversion(
                                 start,
                                 end,
                                 sgn_start,
                                 sgn_end,
-                                self.sv.breakpoint3,
-                                self.sv.sgn_bp3,
+                                self.sv.breakpoint3[0 : row_num + 1],
+                                self.sv.sgn_bp3[0 : row_num + 1],
                             )
 
                     elif sv_type == "DEL":
 
                         if chrom == rec.id:
 
+                            all_breakpoints = np.concatenate(
+                                (
+                                    self.sv.breakpoint1.values[0 : row_num + 1],
+                                    self.sv.breakpoint2.values[0 : row_num + 1],
+                                    self.sv.breakpoint3.values[0 : row_num + 1],
+                                )
+                            )
+
+                            all_sgns = np.concatenate(
+                                (
+                                    self.sv.sgn_bp1.values[0 : row_num + 1],
+                                    self.sv.sgn_bp2.values[0 : row_num + 1],
+                                    self.sv.sgn_bp3.values[0 : row_num + 1],
+                                )
+                            )
+
                             start = min(breakpoint1, breakpoint2)
                             end = max(breakpoint1, breakpoint2)
 
                             mutseq = hsv.deletion(start, end, mutseq)
+
                             # Shift coordinates on the right of DEL region
 
                             self.sv.breakpoint1[
@@ -333,6 +402,29 @@ class GenomeMixer(object):
                                 start, end, self.sv.breakpoint3[row_num + 1 :]
                             )
 
+                            # Modify sgn for SV breakpoint DEL
+
+                            index_bp1_equal_start = self.sv.iloc[:, index_bp1] == start
+                            index_bp2_equal_start = self.sv.iloc[:, index_bp2] == start
+                            index_bp3_equal_start = self.sv.iloc[:, index_bp3] == start
+
+                            new_sgn_del = (
+                                self.sv.iloc[row_num, index_sgn_bp1][0]
+                                + self.sv.iloc[row_num, index_sgn_bp2][1]
+                            )
+
+                            self.sv.iloc[:, index_sgn_bp1][
+                                index_bp1_equal_start
+                            ] = new_sgn_del
+
+                            self.sv.iloc[:, index_sgn_bp2][
+                                index_bp2_equal_start
+                            ] = new_sgn_del
+
+                            self.sv.iloc[:, index_sgn_bp3][
+                                index_bp3_equal_start
+                            ] = new_sgn_del
+
                     elif sv_type == "TRA":
 
                         breakpoint3 = row.breakpoint3
@@ -344,6 +436,28 @@ class GenomeMixer(object):
                             start_paste = breakpoint3
 
                             mutseq = hsv.translocation(start, end, start_paste, mutseq)
+
+                            # Update sign
+                            new_sgn_bp1 = (
+                                self.sv.iloc[row_num, index_sgn_bp3][0]
+                                + self.sv.iloc[row_num, index_sgn_bp1][1]
+                            )
+
+                            new_sgn_bp2 = (
+                                self.sv.iloc[row_num, index_sgn_bp1][0]
+                                + self.sv.iloc[row_num, index_sgn_bp2][1]
+                            )
+
+                            new_sgn_bp3 = (
+                                self.sv.iloc[row_num, index_sgn_bp2][0]
+                                + self.sv.iloc[row_num, index_sgn_bp3][1]
+                            )
+
+                            self.sv.iloc[row_num, index_sgn_bp1] = new_sgn_bp1
+
+                            self.sv.iloc[row_num, index_sgn_bp2] = new_sgn_bp2
+
+                            self.sv.iloc[row_num, index_sgn_bp3] = new_sgn_bp3
 
                             # Update coordinates
                             self.sv.breakpoint1[
@@ -371,11 +485,6 @@ class GenomeMixer(object):
                                 start_paste,
                                 self.sv.breakpoint3[0 : row_num + 1],
                             )
-
-                            # Make sure start is always lower than end
-                            # self.sv.start, self.sv.end = hsv.swap(
-                            #    self.sv.start, self.sv.end
-                            # )
 
                     else:
                         raise NotImplementedError("SV type not implemented yet.")
@@ -508,7 +617,6 @@ def subset_mat(
     binsize: int,
     rundir: str,
     tmpdir: str,
-    prop_negative: float = 0.5,
     pixel_tolerance: int = 3,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
@@ -535,10 +643,7 @@ def subset_mat(
         Name of the directory where genome.fa is.
     tmpdir : str
         Name of the temporary directory.
-    prop_negative : float
-        The proportion of windows without SVs desired. If set to 0.5, when given
-        a list of 23 SV, the function will output 46 observations (windows); 23
-        without SV (picked randomly in the matrix) and 23 with SV.
+
     pixel_tolerance: int
         Pixel of tolerance when we detect an SV.
     chrom_name: str 
@@ -589,7 +694,7 @@ def subset_mat(
     np.save(rundir + "/coordsBP.npy", coordsBP)
 
     # Number of windows to generate (including negative windows)
-    n_windows = int(coords.shape[0] // (1 - prop_negative))
+    n_windows = int(coords.shape[0])
 
     x = np.zeros((n_windows, win_size, win_size), dtype=np.float64)
     y = np.zeros(n_windows, dtype=np.int64)
@@ -678,84 +783,17 @@ def subset_mat(
         )[1:-1] // 3
 
     # Getting negative windows
-    neg_coords = set()
+    imgs_neg = imgs_norm_creater(
+        scrambled=clr.matrix(sparse=False, balance=False),
+        coords_bp=coords,
+        img_size=win_size,
+    )
 
-    for k in range(coords.shape[0], n_windows):
+    x = np.concatenate((imgs_neg, x))
+    y = np.concatenate((np.zeros(imgs_neg.shape[0]), y))
 
-        tries = 0
-        c1 = np.random.randint(win_size // 2, i_w)
-
-        thresold_distance = 20  # Distance between index with SV and index with no SV for the creation of imgs.
-
-        # this coordinate must not exist already
-        while (
-            (min(abs(c1 - coords[:, 0])) <= thresold_distance)
-            or (min(abs(c1 - coords[:, 1])) <= thresold_distance)
-            or (c1 in neg_coords)
-        ):
-            print("{} is already used. Trying another position...".format(c))
-            # If unable to find new coords, just return output until here
-            if tries > 100:
-                return x[:k, :, :], y[:k]
-            neg_coords.add(c1)
-
-            c1 = np.random.randint(win_size // 2, i_w)
-
-            tries += 1
-
-        print(c1)
-        win = clr.matrix(sparse=False, balance=False)[
-            (c1 - halfw) : (c1 + halfw), (c1 - halfw) : (c1 + halfw)
-        ]
-        x[k, :, :] = win
-        y[k] = 0
-        x = x.astype(int)
-
-        c_beg = c1 * binsize - size_train // 2  # Take only first element
-        c_end = c1 * binsize + size_train // 2
-
-        for c_ in range(c_beg, c_end):
-
-            coords_windows[k, c_ - c_beg] = c_
-            seq = gcp.load_seq(
-                rundir + "/mod_genome.fa",
-                chrom_name,
-                c_ - size_win_bp // 2,
-                c_ + size_win_bp // 2 + 1,
-            )
-            percents_GC[k, c_ - c_beg] = gcp.percent_GC(seq)
-            complexity[k, c_ - c_beg] = cf.lempel_complexity(seq)
-
-        region = (
-            chrom_name
-            + ":"
-            + str(c_beg - size_win_bp // 2)
-            + "-"
-            + str(c_end + size_win_bp // 2 + 1)
-        )
-
-        start_read, end_read = bm.bam_region_read_ends(
-            file=tmpdir + "/scrambled.for.bam", region=region, side="both"
-        )
-        n_read = bm.bam_region_coverage(
-            file=tmpdir + "/scrambled.for.bam", region=region
-        )
-
-        start_reads[k] = (
-            start_read
-            + np.concatenate((start_read[1:], np.zeros(1)))
-            + np.concatenate((np.zeros(1), start_read[: len(start_read) - 1]))
-        )[1:-1] // 3
-        end_reads[k] = (
-            end_read
-            + np.concatenate((end_read[1:], np.zeros(1)))
-            + np.concatenate((np.zeros(1), end_read[: len(end_read) - 1]))
-        )[1:-1] // 3
-        n_reads[k] = (
-            n_read
-            + np.concatenate((n_read[1:], np.zeros(1)))
-            + np.concatenate((np.zeros(1), n_read[: len(n_read) - 1]))
-        )[1:-1] // 3
+    x = np.log10(x)
+    x[x == -np.inf] = 0
 
     return (
         x,

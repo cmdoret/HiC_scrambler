@@ -9,6 +9,7 @@ from typing import Tuple, Iterator
 
 from os.path import join
 
+
 def check_gen_sort_index(bam: "ps.AlignmentFile", cores: int = 1) -> str:
     """
     Index the input BAM file if needed. If the file is not coordinate-sorted,
@@ -47,9 +48,7 @@ def check_gen_sort_index(bam: "ps.AlignmentFile", cores: int = 1) -> str:
         if not check_bam_sorted(bam_path):
             sorted_bam = str(bam_path)
             print("Saving a coordinate-sorted BAM file as ", sorted_bam)
-            ps.sort(
-                str(bam_path), "-O", "BAM", "-@", str(cores), "-o", sorted_bam
-            )
+            ps.sort(str(bam_path), "-O", "BAM", "-@", str(cores), "-o", sorted_bam)
         else:
             sorted_bam = str(bam_path)
         # Index the sorted BAM file (input file if it was sorted)
@@ -57,6 +56,7 @@ def check_gen_sort_index(bam: "ps.AlignmentFile", cores: int = 1) -> str:
         ps.index("-@", str(cores), sorted_bam)
 
     return str(sorted_bam)
+
 
 def parse_ucsc_region(ucsc: str) -> Tuple[str, int, int]:
     """Parse a UCSC-formatted region string into a triplet (chrom, start, end).
@@ -102,28 +102,25 @@ def bam_region_read_ends(file: str, region: str, side: str = "both") -> np.ndarr
     numpy.ndarray of ints :
         counts of read extremities at each position in region.
     """
-    
+
     bam = ps.AlignmentFile(file, "rb")
-    
+
     file_sorted = check_gen_sort_index(bam)
-    
+
     bam = ps.AlignmentFile(file_sorted, "rb")
 
     chrom, start, end = parse_ucsc_region(region)
 
-
     start_arr = np.zeros(end - start)
     end_arr = np.zeros(end - start)
-    
-    for read in bam.fetch(chrom, start, end):
-        
 
-        if (read.reference_start - start) >=0:
+    for read in bam.fetch(chrom, start, end):
+
+        if (read.reference_start - start) >= 0:
             start_arr[read.reference_start - start] += 1
 
-        if (read.reference_end - start) < end - start:           
+        if (read.reference_end - start) < end - start:
             end_arr[read.reference_end - start] += 1
-
 
     if side == "start":
         return start_arr
@@ -158,7 +155,8 @@ def bam_region_coverage(file: str, region: str) -> np.ndarray:
 
     return cov_arr
 
-def mean_weighted(array : np.array) -> float:
+
+def mean_weighted(array: np.array) -> float:
     """Return a mean where coords from the center are more important than 
     at the start or at the beginning of the array.
 
@@ -172,82 +170,102 @@ def mean_weighted(array : np.array) -> float:
     float :
         Weighted mean of the array.
     """
-    kernel_size = (len(array)//2)/(2*np.sqrt(np.log(10))) # To have at the beginning and at the end 0.01.
-    if len(array)%2 ==0:
+    kernel_size = (len(array) // 2) / (
+        2 * np.sqrt(np.log(10))
+    )  #  To have at the beginning and at the end 0.01.
+    if len(array) % 2 == 0:
 
-        tab_forward = np.arange(1,len(array)//2+1)
-        tab_reverse = np.arange(len(array)//2, 0, -1)
-
-        tab = np.concatenate((tab_reverse, tab_forward))
-    
-    if len(array)%2 ==1:
-
-        tab_forward = np.arange(0,len(array)//2+1)
-        tab_reverse = np.arange(len(array)//2, 0, -1)
-        
+        tab_forward = np.arange(1, len(array) // 2 + 1)
+        tab_reverse = np.arange(len(array) // 2, 0, -1)
 
         tab = np.concatenate((tab_reverse, tab_forward))
-    tab = np.exp(-(tab**2)/(2*(kernel_size**2)))
-    return np.mean(tab*array)
 
+    if len(array) % 2 == 1:
+
+        tab_forward = np.arange(0, len(array) // 2 + 1)
+        tab_reverse = np.arange(len(array) // 2, 0, -1)
+
+        tab = np.concatenate((tab_reverse, tab_forward))
+    tab = np.exp(-(tab ** 2) / (2 * (kernel_size ** 2)))
+    return np.mean(tab * array)
 
 
 def create_features_BAM(size_img, chrom_name, binsize, RUNDIR, TMPDIR):
 
-        size_train_forest = 202
-        size_win_bp = 2
+    size_train_forest = 202
+    size_win_bp = 2
 
-        starts = np.load(join(RUNDIR, "start_reads.npy"))
-        ends = np.load(join(RUNDIR, "end_reads.npy"))
-        labels = np.load(join(RUNDIR, "y.npy"))
+    starts = np.load(join(RUNDIR, "start_reads.npy"))
+    ends = np.load(join(RUNDIR, "end_reads.npy"))
+    labels = np.load(join(RUNDIR, "labels_hic.npy"))
 
-        starts = starts[labels != 0]
-        ends = ends[labels != 0]
+    coordsBP = np.load(join(RUNDIR, "coordsBP.npy"))
 
-        coordsBP = np.load(join(RUNDIR, "coordsBP.npy"))
+    scrambled = np.load(join(RUNDIR, "scrambled.npy"))
+    ind_beg = size_img // 2
+    ind_end = len(scrambled) - size_img // 2
+    valid_coords = np.where(
+        (coordsBP >= ind_beg * binsize) & (coordsBP <= ind_end * binsize)
+    )
+    coords_used = coordsBP[valid_coords]
 
-        scrambled = np.load(join(RUNDIR, "scrambled.npy"))
-        ind_beg = size_img//2
-        ind_end = len(scrambled) - size_img//2
-        valid_coords = np.where((coordsBP >= ind_beg*binsize) & (coordsBP <= ind_end*binsize))
-        coords_used = coordsBP[valid_coords]
+    new_labels = list(labels[labels != 0])
 
-        new_labels = [1]*len(starts)
+    test = False
+    while test == False:
 
-        test = False
-        while test == False:
+        index = np.random.randint(ind_beg + 2, ind_end - 2)
+        test = len(np.where(coords_used // binsize == index)[0]) == 0
 
-            index = np.random.randint(ind_beg+2, ind_end-2)
-            test = len(np.where(coords_used//binsize == index)[0]) == 0
+    coords_used = list(coords_used)
+    coords_used.append(index)
+    coords_used = np.array(coords_used)
 
-        coords_used = list(coords_used)
-        coords_used.append(index)
-        coords_used = np.array(coords_used)
+    mean_start_reads = list()
+    mean_end_reads = list()
 
-        mean_start_reads = list()
-        mean_end_reads = list()
+    for coord in range(index * binsize, (index + 1) * binsize, 10):
 
-        for coord in range(index*binsize, (index+1)*binsize, 10):
-            
-            c_beg = int(coord - size_train_forest//4)
-            c_end = int(coord + size_train_forest//4)
+        c_beg = int(coord - size_train_forest // 4)
+        c_end = int(coord + size_train_forest // 4)
 
+        region = (
+            chrom_name
+            + ":"
+            + str(c_beg - size_win_bp // 2)
+            + "-"
+            + str(c_end + size_win_bp // 2 + 1)
+        )
 
-            region = chrom_name + ":" + str(c_beg-size_win_bp//2) + "-" + str(c_end+ size_win_bp//2 + 1)
-            
-            start_reads, end_reads = bam_region_read_ends(file = join(TMPDIR, "scrambled.for.bam"), region = region, side  = "both")
-            
+        start_reads, end_reads = bam_region_read_ends(
+            file=join(TMPDIR, "scrambled.for.bam"), region=region, side="both"
+        )
 
-            mean_start_reads.append((start_reads + np.concatenate((start_reads[1:], np.zeros(1))) + np.concatenate((np.zeros(1), start_reads[:len(start_reads)-1])))[1:-1]//3)
-            mean_end_reads.append((end_reads + np.concatenate((end_reads[1:], np.zeros(1))) + np.concatenate((np.zeros(1), end_reads[:len(end_reads)-1])))[1:-1]//3)
-            
-            new_labels.append(0)   
+        mean_start_reads.append(
+            (
+                start_reads
+                + np.concatenate((start_reads[1:], np.zeros(1)))
+                + np.concatenate((np.zeros(1), start_reads[: len(start_reads) - 1]))
+            )[1:-1]
+            // 3
+        )
+        mean_end_reads.append(
+            (
+                end_reads
+                + np.concatenate((end_reads[1:], np.zeros(1)))
+                + np.concatenate((np.zeros(1), end_reads[: len(end_reads) - 1]))
+            )[1:-1]
+            // 3
+        )
 
-        starts = np.concatenate((starts, np.array(mean_start_reads)))
-        ends = np.concatenate((ends, np.array(mean_end_reads)))
-        new_labels = np.array(new_labels)
+        new_labels.append(0)
 
-        features = np.concatenate((starts, ends), axis = 1)
-          
-        np.save(join(RUNDIR, "features.npy"), features)
-        np.save(join(RUNDIR, "labels.npy"), new_labels)
+    starts = np.concatenate((starts, np.array(mean_start_reads)))
+    ends = np.concatenate((ends, np.array(mean_end_reads)))
+    new_labels = np.array(new_labels)
+
+    features = np.concatenate((starts, ends), axis=1)
+
+    np.save(join(RUNDIR, "features_BAM.npy"), features)
+    np.save(join(RUNDIR, "labels_BAM.npy"), new_labels)
+

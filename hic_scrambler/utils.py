@@ -3,6 +3,8 @@
 import numpy as np
 import pandas as pd
 
+from typing import Iterable
+
 np.seterr(divide="ignore")
 
 
@@ -55,7 +57,36 @@ def sv_dataframe_modification(sv_dataframe: pd.DataFrame) -> pd.DataFrame:
 
     sv_types[indices_DEL] = "INS"
 
-
     sv_dataframe["sv_type"] = sv_types
 
     return sv_dataframe
+
+
+def imgs_norm_creater(
+    scrambled: np.matrix, coords_bp: Iterable[int], img_size: int = 128,
+):
+    """
+    Create imgs for coords where there are no SVs.
+
+
+    """
+
+    size_mat = scrambled.shape[0]
+
+    thresold = 10  # Create imgs at a coord where the SVs are at a distance at least this thresold
+
+    imgs = list()
+    step = 2
+
+    for coord in range(img_size // 2, size_mat - img_size // 2, step):
+
+        dis_SV = abs(coords_bp - coord)
+
+        if np.min(dis_SV) > thresold:
+            imgs.append(
+                scrambled[
+                    coord - img_size // 2 : coord + img_size // 2,
+                    coord - img_size // 2 : coord + img_size // 2,
+                ]
+            )  # Append img if distance to SV is at least the thresold
+    return np.array(imgs)

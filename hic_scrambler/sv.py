@@ -1,4 +1,4 @@
-from typing import Iterable
+from typing import Iterable, Tuple
 import numpy as np
 import warnings
 from Bio import Seq
@@ -154,7 +154,9 @@ def update_sgn_inversion(
     coords: Iterable[int],
     sgns: Iterable[str],
 ) -> "np.ndarray[str]":
-
+    """
+    Updates the signs during an inversion.
+    """
     coords_inside_fragment = (coords > start) & (coords < end)
     sgn_inside_fragment = sgns[np.argsort(coords[coords_inside_fragment])]
 
@@ -168,6 +170,83 @@ def update_sgn_inversion(
     sgns[coords == end] = sgn_start[1] + sgn_end[1]
 
     return sgns
+
+
+def inverse_sgn(sgn: str) -> str:
+    """
+    Return the opposite sign.
+    """
+
+    if sgn == "+":
+        return "-"
+    else:
+        return "+"
+
+
+def update_sgn_deletion(
+    start: int, end: int, all_breakpoints: Iterable[int], all_sgns: Iterable[str],
+) -> "np.ndarray[str]":
+    """
+    Updates the signs after a deletion (some fragments can disappeared).
+    """
+    all_breakpoints_unique, indexes_unique = np.unique(
+        all_breakpoints, return_index=True
+    )
+    all_sgns_unique = all_sgns[indexes_unique]
+
+    all_sgns_sorted = all_sgns_unique[np.argsort(all_breakpoints_unique)]
+    all_breakpoints_sorted = np.sort(all_breakpoints_unique)
+
+    sgns_before_start = all_sgns_sorted[all_breakpoints_sorted < start]
+    sgns_after_end = all_sgns_sorted[all_breakpoints_sorted > end]
+
+    if len(sgns_before_start) > 0:
+        sgn_left = inverse_sgn(sgns_before_start[-1][1])
+    else:
+        sgn_left = "+"
+
+    if len(sgns_after_end) > 0:
+        sgn_right = inverse_sgn(sgns_after_end[0][0])
+    else:
+        sgn_right = "-"
+
+    sgn_final = sgn_left + sgn_right
+    return sgn_final
+
+
+def find_sgns(
+    breakpoint: int, all_breakpoints: Iterable[int], all_sgns: Iterable[str],
+) -> Tuple[str, str, str]:
+    """
+    Find the sign with watching the fragments.
+    """
+
+    all_breakpoints_unique, indexes_unique = np.unique(
+        all_breakpoints, return_index=True
+    )
+    all_sgns_unique = all_sgns[indexes_unique]
+
+    all_sgns_sorted = all_sgns_unique[np.argsort(all_breakpoints_unique)]
+    all_breakpoints_sorted = np.sort(all_breakpoints_unique)
+    print(breakpoint)
+    print(all_breakpoints_sorted)
+
+    sgns_before_breakpoint = all_sgns_sorted[all_breakpoints_sorted < breakpoint]
+    sgns_after_breakpoint = all_sgns_sorted[all_breakpoints_sorted > breakpoint]
+
+    if len(sgns_before_breakpoint) > 0:
+        sgn_left = inverse_sgn(sgns_before_breakpoint[-1][1])
+    else:
+        sgn_left = "+"
+
+    if len(sgns_after_breakpoint) > 0:
+        sgn_right = inverse_sgn(sgns_after_breakpoint[0][0])
+    else:
+        sgn_right = "-"
+
+    sgn_final = sgn_left + sgn_right
+    print(sgn_final)
+    return sgn_final
 
 
 def swap(starts: Iterable[int], ends: Iterable[int]) -> "np.ndarray[int]":
