@@ -29,7 +29,7 @@ CONFIG_PATH = join(os.path.dirname(__file__), "config", "template.json")
 @click.option(
     "--binsize",
     "-b",
-    default=10000,
+    default=2000,
     show_default=True,
     help="The resolution of matrices to generate, in basepair",
 )
@@ -70,7 +70,7 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
     #    no_cleanup = False
     # )
     # clr_ori = cooler.Cooler(join(outdir, "original.cool"))
-    slice_bins = 3000
+    slice_bins = 750
 
     # Make edited genomes. Each edited genome will start from a subset of the
     # original (full) genome.
@@ -91,7 +91,7 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         # np.save(join(rundir, "truth.npy"), mat_ori)
 
         # Generate random structural variations and apply them to the genome
-        mixer = gu.GenomeMixer(sub_fasta, CONFIG_PATH, "Debug")
+        mixer = gu.GenomeMixer(sub_fasta, CONFIG_PATH, "Yeast")
         mixer.generate_sv()
         mod_genome = join(rundir, "mod_genome.fa")
         mixer.save_edited_genome(mod_genome)
@@ -117,7 +117,6 @@ def run_scrambles(fasta, outdir, reads1, reads2, binsize, nruns, tmpdir):
         mixer.sv, breakpoints, labels, coords_BP, chroms, index_TRA = gu.pos_to_coord(
             clr_mod, mixer.sv
         )
-
         np.save(join(rundir, "is_tra.npy"), index_TRA)
 
         size_img = 128

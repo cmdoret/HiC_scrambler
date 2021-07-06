@@ -53,7 +53,7 @@ def sv_dataframe_modification(sv_dataframe: pd.DataFrame) -> pd.DataFrame:
     # Our DEL are INS
     indices_DEL = sv_dataframe["sv_type"] == "DEL"
 
-    sv_types[indices_DEL] = "DEL"
+    sv_types[indices_DEL] = "INS"
 
 
     sv_dataframe["sv_type"] = sv_types

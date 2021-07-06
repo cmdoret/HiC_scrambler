@@ -15,7 +15,6 @@ import hic_scrambler.sv as hsv
 import hic_scrambler.BAM_functions as bm
 import hic_scrambler.GCpercent_functions as gcp
 import hic_scrambler.complexity_function as cf
-from hic_scrambler.sv_class import SVs
 
 
 class GenomeMixer(object):
@@ -263,31 +262,31 @@ class GenomeMixer(object):
                             )
 
                             # Update sgns
-                            self.sv.sgn_bp1[0 : row_num + 1] = hsv.update_sgn_inversion(
+                            self.sv.sgn_bp1 = hsv.update_sgn_inversion(
                                 start,
                                 end,
                                 sgn_start,
                                 sgn_end,
-                                self.sv.breakpoint1[0 : row_num + 1],
-                                self.sv.sgn_bp1[0 : row_num + 1],
+                                self.sv.breakpoint1,
+                                self.sv.sgn_bp1,
                             )
 
-                            self.sv.sgn_bp2[0 : row_num + 1] = hsv.update_sgn_inversion(
+                            self.sv.sgn_bp2 = hsv.update_sgn_inversion(
                                 start,
                                 end,
                                 sgn_start,
                                 sgn_end,
-                                self.sv.breakpoint2[0 : row_num + 1],
-                                self.sv.sgn_bp2[0 : row_num + 1],
+                                self.sv.breakpoint2,
+                                self.sv.sgn_bp2,
                             )
 
-                            self.sv.sgn_bp3[0 : row_num + 1] = hsv.update_sgn_inversion(
+                            self.sv.sgn_bp3 = hsv.update_sgn_inversion(
                                 start,
                                 end,
                                 sgn_start,
                                 sgn_end,
-                                self.sv.breakpoint3[0 : row_num + 1],
-                                self.sv.sgn_bp3[0 : row_num + 1],
+                                self.sv.breakpoint3,
+                                self.sv.sgn_bp3,
                             )
 
                     elif sv_type == "DEL":
