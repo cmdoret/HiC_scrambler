@@ -16,7 +16,7 @@ import hic_scrambler.BAM_functions as bm
 import hic_scrambler.GCpercent_functions as gcp
 import hic_scrambler.complexity_function as cf
 
-from hic_scrambler.utils import imgs_norm_creater
+from hic_scrambler.utils import imgs_neg_creater
 
 
 class GenomeMixer(object):
@@ -153,7 +153,7 @@ class GenomeMixer(object):
                 for _ in range(n_event):
                     # Start position is random and length is picked from a normal
                     # distribution centered around mean length.
-                    breakpoint1 = np.random.randint(size)
+                    breakpoint1 = np.random.randint(64 * 2000, size - 64 * 2000)
                     breakpoint2 = breakpoint1 + abs(
                         np.random.normal(
                             loc=sv_char["mean_size"], scale=sv_char["sd_size"]
@@ -708,7 +708,8 @@ def subset_mat(
     if win_size >= min(h, w):
         print("Window size must be smaller than the Hi-C matrix.")
     halfw = win_size // 2
-    # Getting SV windows
+
+    # Matrix features
     coords = coords.astype(int)
     for i in range(coords.shape[0]):
         print(i)
@@ -716,22 +717,36 @@ def subset_mat(
             coords[i, :]
         )  # We will create the features only for one of the two coords at random.
 
-        index_random = np.random.randint(2)  # 0 or 1
-
         c = coords[i, :]
-        try:
+
+        if labels[i] == "INV":
+
             win = clr.matrix(sparse=False, balance=False)[
-                (c[index_random] - halfw) : (c[index_random] + halfw),
-                (c[index_random] - halfw) : (c[index_random] + halfw),
+                (c[0] - halfw) : (c[0] + halfw), (c[1] - halfw) : (c[1] + halfw),
             ]
-        except TypeError:
-            breakpoint()
+
+        elif labels[i] == "DEL":
+            win = clr.matrix(sparse=False, balance=False)[
+                (c[0] - halfw) : (c[0] + halfw), (c[0] - halfw) : (c[0] + halfw),
+            ]
+
+        elif labels[i] == "TRA":  #  Change if the translocation is back or forward
+            win = clr.matrix(sparse=False, balance=False)[
+                (c[np.argsort(c)[1]] - halfw) : (c[np.argsort(c)[1]] + halfw),
+                (c[1 - np.argsort(c)[1]] - halfw) : (c[1 - np.argsort(c)[1]] + halfw),
+            ]
+        else:
+            raise NotImplementedError("SV type not implemented yet.")
+
         x[i, :, :] = win
         y[i] = sv_to_int[labels[i]]
 
+    # BAM features
     for j in range(coordsBP.shape[0]):
 
-        index_random = np.random.randint(2)  # 0 or 1 at random like before
+        index_random = np.random.randint(
+            2
+        )  # 0 or 1 at random because create for only one of the coords (to win time)
 
         c_beg = (
             coordsBP[j, index_random] - size_train // 2
@@ -783,7 +798,7 @@ def subset_mat(
         )[1:-1] // 3
 
     # Getting negative windows
-    imgs_neg = imgs_norm_creater(
+    imgs_neg = imgs_neg_creater(
         scrambled=clr.matrix(sparse=False, balance=False),
         coords_bp=coords,
         img_size=win_size,

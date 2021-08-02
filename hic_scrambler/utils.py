@@ -62,13 +62,11 @@ def sv_dataframe_modification(sv_dataframe: pd.DataFrame) -> pd.DataFrame:
     return sv_dataframe
 
 
-def imgs_norm_creater(
+def imgs_neg_creater(
     scrambled: np.matrix, coords_bp: Iterable[int], img_size: int = 128,
 ):
     """
     Create imgs for coords where there are no SVs.
-
-
     """
 
     size_mat = scrambled.shape[0]
@@ -78,15 +76,18 @@ def imgs_norm_creater(
     imgs = list()
     step = 2
 
-    for coord in range(img_size // 2, size_mat - img_size // 2, step):
+    for coord_abs in range(img_size // 2, size_mat - img_size // 2, step):
+        for coord_ord in range(img_size // 2, size_mat - img_size // 2, step):
 
-        dis_SV = abs(coords_bp - coord)
+            dis_SV = min(
+                np.min(abs(coords_bp - coord_abs)), np.min(abs(coords_bp - coord_ord))
+            )
 
-        if np.min(dis_SV) > thresold:
-            imgs.append(
-                scrambled[
-                    coord - img_size // 2 : coord + img_size // 2,
-                    coord - img_size // 2 : coord + img_size // 2,
-                ]
-            )  # Append img if distance to SV is at least the thresold
+            if dis_SV > thresold:
+                imgs.append(
+                    scrambled[
+                        coord_abs - img_size // 2 : coord_abs + img_size // 2,
+                        coord_ord - img_size // 2 : coord_ord + img_size // 2,
+                    ]
+                )  # Append img if distance to SV is at least the thresold
     return np.array(imgs)
